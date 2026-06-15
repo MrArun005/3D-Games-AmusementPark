@@ -10,6 +10,8 @@ import { PALETTE } from '@/lib/palette'
 import { makeStripesTexture } from '@/lib/textures'
 import { useGameStore, isNight } from '@/state/useGameStore'
 import { useRideMachine, RideTrigger, applyRideCamera } from './RideBase'
+import RideRider from '@/components/world/RideRider'
+import { useRideOccupancy } from '@/lib/rideOccupancy'
 
 const spec = RIDES.ferris
 const RADIUS = 9
@@ -38,6 +40,7 @@ export default function FerrisWheel() {
   const rimMat = useRef<THREE.MeshStandardMaterial>(null)
   const bulbMat = useRef<THREE.MeshStandardMaterial>(null)
   const camera = useThree((s) => s.camera)
+  const seats = useRideOccupancy((s) => s.seats.ferris)
 
   const angles = useMemo(() => Array.from({ length: 8 }, (_, i) => (i / 8) * Math.PI * 2), [])
 
@@ -307,6 +310,11 @@ export default function FerrisWheel() {
               scale={[1, 0.72, 1]}
               castShadow
             />
+            {seats[i] && (
+              <group position={[0, -1.32, 0]}>
+                <RideRider variant={seats[i]!.variant} />
+              </group>
+            )}
           </group>
         ))}
       </group>
