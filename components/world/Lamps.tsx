@@ -4,6 +4,7 @@ import { useMemo, useRef } from 'react'
 import * as THREE from 'three'
 import { useFrame } from '@react-three/fiber'
 import { Instances, Instance } from '@react-three/drei'
+import { RigidBody, CylinderCollider } from '@react-three/rapier'
 import { useGameStore, isNight } from '@/state/useGameStore'
 import { LAMP_POSITIONS } from '@/lib/spawn'
 
@@ -30,6 +31,11 @@ export default function Lamps() {
 
   return (
     <group>
+      <RigidBody type="fixed" colliders={false}>
+        {positions.map(([x, z], i) => (
+          <CylinderCollider key={i} args={[1.6, 0.12]} position={[x, 1.6, z]} />
+        ))}
+      </RigidBody>
       <Instances limit={positions.length} castShadow>
         <cylinderGeometry args={[0.06, 0.09, 3.2, 7]} />
         <meshStandardMaterial color="#252c44" />
