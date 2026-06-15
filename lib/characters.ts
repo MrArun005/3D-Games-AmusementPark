@@ -52,13 +52,23 @@ export function findClip(
   return animations.find((a) => re.test(a.name))
 }
 
-/** Build a configured, independent clone. */
+/** Standing height in metres at config.scale === 1 (a touch under the ~1.8 m player capsule). */
+export const TARGET_HEIGHT = 1.7
+
+/**
+ * Build a configured, independent clone, normalised to a consistent human height
+ * with feet at y=0. The pack's models carry a baked node-scale (~100×) and an
+ * origin that isn't at the feet, so we MEASURE the assembled bounding box and
+ * rescale/translate rather than trusting the file's units. The model is wrapped
+ * in a group so a caller's `position.set(x, 0, z)` places it by its ground point
+ * without clobbering the internal feet-to-0 offset.
+ */
 export function buildCharacter(source: THREE.Object3D, config: CharacterConfig): THREE.Object3D {
-  const root = SkeletonUtils.clone(source)
+  const model = SkeletonUtils.clone(source)
   const tint = config.accent > 0
     ? new THREE.Color('#ffffff').lerp(new THREE.Color(ACCENT_COLORS[config.accent]), 0.28)
     : null
-  root.traverse((o) => {
+  model.traverse((o) => {
     const m = o as THREE.Mesh
     if (!m.isMesh) return
     m.castShadow = true
@@ -68,6 +78,19 @@ export function buildCharacter(source: THREE.Object3D, config: CharacterConfig):
     if (tint) mat.color.multiply(tint)
     m.material = mat
   })
-  root.scale.setScalar(config.scale)
-  return root
+
+  // Normalise size to TARGET_HEIGHT * scale regardless of the model's baked units.
+  model.updateWorldMatrix(true, true)
+  const box = new THREE.Box3().setFromObject(model)
+  const h = box.max.y - box.min.y
+  const k = h > 1e-4 ? (TARGET_HEIGHT * config.scale) / h : config.scale
+  model.scale.multiplyScalar(k)
+  // Drop the feet to y=0 within the wrapper.
+  model.updateWorldMatrix(true, true)
+  const grounded = new THREE.Box3().setFromObject(model)
+  model.position.y -= grounded.min.y
+
+  const wrapper = new THREE.Group()
+  wrapper.add(model)
+  return wrapper
 }

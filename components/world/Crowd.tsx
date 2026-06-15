@@ -32,7 +32,8 @@ interface Npc {
   s: number
   root: THREE.Object3D
   mixer: THREE.AnimationMixer
-  action: THREE.AnimationAction
+  walkAction: THREE.AnimationAction
+  idleAction: THREE.AnimationAction | null
 }
 
 /**
@@ -76,10 +77,16 @@ export default function Crowd() {
       }
 
       const mixer = new THREE.AnimationMixer(root)
-      const clip = findClip(animations, 'Walk') ?? animations[0]
-      const action = mixer.clipAction(clip)
-      action.play()
-      action.time = rnd() * 2 // desync the stride between people
+      const walkClip = findClip(animations, 'Walk') ?? animations[0]
+      const idleClip = findClip(animations, 'Idle')
+      const walkAction = mixer.clipAction(walkClip)
+      walkAction.play()
+      walkAction.time = rnd() * 2 // desync the stride between people
+      const idleAction = idleClip ? mixer.clipAction(idleClip) : null
+      if (idleAction) {
+        idleAction.play()
+        idleAction.time = rnd() * 2
+      }
 
       list.push({
         x: wp[0] + (rnd() - 0.5) * 3,
@@ -92,7 +99,8 @@ export default function Crowd() {
         s,
         root,
         mixer,
-        action,
+        walkAction,
+        idleAction,
       })
     }
     return list
@@ -173,14 +181,19 @@ export default function Crowd() {
       a.y = 1.95 * n.s
       a.idle = !walking
 
-      // LOD: only advance the walk cycle for nearby NPCs; pause the rest.
+      // LOD: only animate nearby NPCs (cheap). Near ones blend walk<->idle so
+      // lingering people stand and breathe instead of freezing mid-stride; far
+      // ones simply stop advancing (frozen, but off-screen/distant anyway).
       const near = (n.x - px) ** 2 + (n.z - pz) ** 2 < ANIM_LOD_R * ANIM_LOD_R
-      if (near && walking) {
-        n.action.paused = false
-        n.action.timeScale = THREE.MathUtils.clamp(n.speed * 1.3, 0.7, 2)
+      if (near) {
+        n.walkAction.timeScale = THREE.MathUtils.clamp(n.speed * 1.3, 0.7, 2)
+        if (n.idleAction) {
+          n.walkAction.weight = walking ? 1 : 0
+          n.idleAction.weight = walking ? 0 : 1
+        } else {
+          n.walkAction.paused = !walking
+        }
         n.mixer.update(dt)
-      } else {
-        n.action.paused = true
       }
     }
     crowdAgents.length = count

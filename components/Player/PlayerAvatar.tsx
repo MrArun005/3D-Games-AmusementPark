@@ -22,11 +22,15 @@ export default function PlayerAvatar() {
   const group = useRef<THREE.Group>(null)
   const { actions, mixer } = useAnimations(animations, group)
   const walk = useRef<THREE.AnimationAction | null>(null)
+  const idle = useRef<THREE.AnimationAction | null>(null)
 
   useEffect(() => {
-    const clip = findClip(animations, 'Walk') ?? animations[0]
-    const a = clip ? actions[clip.name] : null
-    if (a) { a.play(); walk.current = a }
+    const walkClip = findClip(animations, 'Walk') ?? animations[0]
+    const idleClip = findClip(animations, 'Idle')
+    const w = walkClip ? actions[walkClip.name] : null
+    const i = idleClip ? actions[idleClip.name] : null
+    if (w) { w.play(); walk.current = w }
+    if (i) { i.play(); idle.current = i }
     return () => { mixer.stopAllAction() }
   }, [actions, animations, mixer, built])
 
@@ -38,17 +42,25 @@ export default function PlayerAvatar() {
 
     const v = playerRig.body?.linvel()
     const speed = v ? Math.hypot(v.x, v.z) : 0
-    const a = walk.current
-    if (a) {
-      if (speed > 0.4) { a.paused = false; a.timeScale = THREE.MathUtils.clamp(speed / 2.2, 0.7, 2.4) }
-      else a.paused = true
+    const moving = speed > 0.4
+    const w = walk.current
+    if (w) {
+      w.timeScale = THREE.MathUtils.clamp(speed / 2.2, 0.7, 2.4)
+      if (idle.current) {
+        // blend walk<->idle so standing still looks natural, not a frozen stride
+        w.paused = false
+        w.weight = moving ? 1 : 0
+        idle.current.weight = moving ? 0 : 1
+      } else {
+        w.paused = !moving
+      }
     }
-    if (v && speed > 0.4) g.rotation.y = Math.atan2(v.x, v.z)
+    if (moving) g.rotation.y = Math.atan2(v!.x, v!.z)
     else g.rotation.y = look.yaw + Math.PI
   })
 
   return (
-    <group ref={group} position={[0, -0.95, 0]}>
+    <group ref={group} position={[0, -0.9, 0]}>
       <primitive object={built} />
     </group>
   )
