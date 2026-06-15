@@ -2,6 +2,7 @@
 
 import { useMemo } from 'react'
 import { Instances, Instance } from '@react-three/drei'
+import { RigidBody, CylinderCollider } from '@react-three/rapier'
 import { mulberry32, RIDE_LIST } from '@/lib/spawn'
 
 interface Tree {
@@ -45,6 +46,16 @@ export default function Trees() {
 
   return (
     <group>
+      <RigidBody type="fixed" colliders={false}>
+        {trees.map((t, i) => (
+          <CylinderCollider
+            key={i}
+            args={[0.8 * t.s, 0.28 * t.s]}
+            position={[t.x, 0.8 * t.s, t.z]}
+          />
+        ))}
+      </RigidBody>
+
       {/* trunk — wood brown, very rough */}
       <Instances limit={trees.length} castShadow>
         <cylinderGeometry args={[0.18, 0.26, 1.6, 7]} />
