@@ -4,13 +4,14 @@ import { useEffect, useMemo, useRef } from 'react'
 import * as THREE from 'three'
 import { useFrame } from '@react-three/fiber'
 import { useGLTF } from '@react-three/drei'
-import { SkeletonUtils } from 'three-stdlib'
 import { useGameStore, type Quality } from '@/state/useGameStore'
 import { mulberry32, WAYPOINTS } from '@/lib/spawn'
 import { CROWD_TARGETS, crowdAgents } from '@/lib/crowd'
-import { BAZAAR } from '@/lib/palette'
+import { buildCharacter, randomConfig, findClip, CHARACTER_MODELS, CHARACTER_URLS, ACCENT_COLORS } from '@/lib/characters'
 
-const MODEL = '/models/CesiumMan.glb'
+/** Bright balloon colours (skip index 0 = white) for the "bought something" prop. */
+const BALLOON_COLORS = ACCENT_COLORS.slice(1)
+
 const MAX = 24
 const COUNT_BY_Q: Record<Quality, number> = { low: 10, medium: 16, high: MAX }
 
@@ -18,13 +19,6 @@ const COUNT_BY_Q: Record<Quality, number> = { low: 10, medium: 16, high: MAX }
 const ANIM_LOD_R = 30
 const FOUNTAIN_AVOID_R = 4.5
 const AVOID_GAIN = 2
-
-/** Clothing tints applied over the model's texture — varied but kept moderate. */
-const CLOTH_TINTS = [
-  BAZAAR.magenta, BAZAAR.marigold, BAZAAR.parrotGreen, BAZAAR.turquoise,
-  BAZAAR.purple, BAZAAR.chilliRed, BAZAAR.yellow, BAZAAR.skyBlue,
-  '#e8e2d2', '#cdd6e0',
-]
 
 interface Npc {
   x: number
@@ -42,15 +36,15 @@ interface Npc {
 }
 
 /**
- * Realistic wandering crowd: each NPC is an independent skinned clone of the
- * same textured human as the player (CesiumMan), with a per-person clothing
- * tint, varied height, and the walk clip driven by speed. Physics-free — they
- * steer in straight lines between path waypoints with fountain avoidance and
+ * Realistic wandering crowd: each NPC is an independent skinned clone drawn from
+ * one of the {@link CHARACTER_MODELS} modern-civilian models, with a per-person
+ * accent tint, varied height, and the walk clip driven by speed. Physics-free —
+ * they steer in straight lines between path waypoints with fountain avoidance and
  * occasional idle pauses. A distance LOD freezes the animation of far NPCs.
  */
 export default function Crowd() {
   const count = useGameStore((s) => COUNT_BY_Q[s.quality])
-  const { scene, animations } = useGLTF(MODEL)
+  const gltfs = useGLTF(CHARACTER_URLS)
   const group = useRef<THREE.Group>(null)
 
   const npcs = useMemo<Npc[]>(() => {
@@ -59,25 +53,10 @@ export default function Crowd() {
     for (let i = 0; i < MAX; i++) {
       const wp = WAYPOINTS[Math.floor(rnd() * WAYPOINTS.length)]
       const target = WAYPOINTS[Math.floor(rnd() * WAYPOINTS.length)]
-      const root = SkeletonUtils.clone(scene)
-      const s = 0.85 + rnd() * 0.3
-      root.scale.setScalar(s)
-
-      // independent, tinted materials so each clone wears a different colour
-      const tint = new THREE.Color(CLOTH_TINTS[Math.floor(rnd() * CLOTH_TINTS.length)])
-      root.traverse((o) => {
-        const m = o as THREE.Mesh
-        if (m.isMesh) {
-          m.castShadow = true
-          m.frustumCulled = false
-          const src = m.material as THREE.MeshStandardMaterial
-          const mat = src.clone()
-          // blend the tint lightly over the baked texture: enough for clothing
-          // variety, but not so much it flattens the face into a solid colour
-          mat.color = new THREE.Color('#ffffff').lerp(tint, 0.35)
-          m.material = mat
-        }
-      })
+      const cfg = randomConfig(rnd)
+      const { scene, animations } = gltfs[cfg.model]
+      const root = buildCharacter(scene, cfg)
+      const s = cfg.scale
 
       // ~40% carry a balloon (visible "bought something" prop) on a string
       if (rnd() < 0.4) {
@@ -85,7 +64,7 @@ export default function Crowd() {
         carry.position.set(0.28, 1.9, 0.05)
         const balloon = new THREE.Mesh(
           new THREE.SphereGeometry(0.16, 10, 8),
-          new THREE.MeshStandardMaterial({ color: CLOTH_TINTS[Math.floor(rnd() * CLOTH_TINTS.length)], roughness: 0.4 })
+          new THREE.MeshStandardMaterial({ color: BALLOON_COLORS[Math.floor(rnd() * BALLOON_COLORS.length)], roughness: 0.4 })
         )
         const string = new THREE.Mesh(
           new THREE.CylinderGeometry(0.005, 0.005, 0.5, 4),
@@ -97,7 +76,8 @@ export default function Crowd() {
       }
 
       const mixer = new THREE.AnimationMixer(root)
-      const action = mixer.clipAction(animations[0])
+      const clip = findClip(animations, 'Walk') ?? animations[0]
+      const action = mixer.clipAction(clip)
       action.play()
       action.time = rnd() * 2 // desync the stride between people
 
@@ -116,7 +96,7 @@ export default function Crowd() {
       })
     }
     return list
-  }, [scene, animations])
+  }, [gltfs])
 
   // attach the clones to the scene graph once
   useEffect(() => {
@@ -209,4 +189,4 @@ export default function Crowd() {
   return <group ref={group} />
 }
 
-useGLTF.preload(MODEL)
+CHARACTER_URLS.forEach((u) => useGLTF.preload(u))
