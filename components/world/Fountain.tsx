@@ -9,15 +9,51 @@ import { PALETTE } from '@/lib/palette'
 
 const STONE = '#ded5c2'
 const STONE_DARK = '#c2b8a1'
+const WATER = '#2e6b78'
 const JET_ANGLES = [0, Math.PI / 2, Math.PI, (3 * Math.PI) / 2]
+
+/**
+ * Procedural ripple normal map: sum a few sine lobes into a tangent-space normal
+ * texture so the water catches the HDRI with a moving, watery wobble. Generated
+ * once on a small canvas (no asset, no per-frame vertex work); we just scroll its
+ * `offset` in useFrame. RepeatWrapping makes the scroll seamless.
+ */
+function makeRippleNormalMap(): THREE.Texture {
+  const S = 64
+  const cv = document.createElement('canvas')
+  cv.width = cv.height = S
+  const ctx = cv.getContext('2d')!
+  const img = ctx.createImageData(S, S)
+  for (let y = 0; y < S; y++) {
+    for (let x = 0; x < S; x++) {
+      const u = (x / S) * Math.PI * 2
+      const v = (y / S) * Math.PI * 2
+      // partial derivatives of a couple of crossing waves -> tangent-space normal
+      const nx = Math.sin(u * 2) * 0.5 + Math.sin(u + v) * 0.3
+      const ny = Math.sin(v * 2) * 0.5 + Math.cos(u - v) * 0.3
+      const nz = 1
+      const len = Math.hypot(nx, ny, nz)
+      const i = (y * S + x) * 4
+      img.data[i] = ((nx / len) * 0.5 + 0.5) * 255
+      img.data[i + 1] = ((ny / len) * 0.5 + 0.5) * 255
+      img.data[i + 2] = ((nz / len) * 0.5 + 0.5) * 255
+      img.data[i + 3] = 255
+    }
+  }
+  ctx.putImageData(img, 0, 0)
+  const tex = new THREE.CanvasTexture(cv)
+  tex.wrapS = tex.wrapT = THREE.RepeatWrapping
+  tex.repeat.set(3, 3)
+  return tex
+}
 
 /** Plaza centrepiece: two-tier stone fountain with pulsing jets, glows at night. */
 export default function Fountain() {
   const jet = useRef<THREE.Mesh>(null)
-  const waterMat = useRef<THREE.MeshStandardMaterial>(null)
-  const waterTopMat = useRef<THREE.MeshStandardMaterial>(null)
+  const waterMat = useRef<THREE.MeshPhysicalMaterial>(null)
+  const waterTopMat = useRef<THREE.MeshPhysicalMaterial>(null)
 
-  const { lowerBasin, upperBasin, column, jetMat } = useMemo(() => {
+  const { lowerBasin, upperBasin, column, jetMat, rippleMap } = useMemo(() => {
     // profiles are (radius, height) pairs swept around Y: out along the floor,
     // up the outer wall, over the lip, then back down the inner wall
     const profile = (pts: [number, number][]) => pts.map(([r, y]) => new THREE.Vector2(r, y))
@@ -49,16 +85,20 @@ export default function Fountain() {
       transparent: true,
       opacity: 0.55,
     })
-    return { lowerBasin, upperBasin, column, jetMat }
+    const rippleMap = makeRippleNormalMap()
+    return { lowerBasin, upperBasin, column, jetMat, rippleMap }
   }, [])
 
   useFrame((state) => {
     const t = state.clock.elapsedTime
     if (jet.current) jet.current.scale.y = 1 + Math.sin(t * 2.2) * 0.18
     const night = isNight(useGameStore.getState().timeOfDay)
-    if (waterMat.current) waterMat.current.emissiveIntensity = night ? 2.2 : 0.25
-    if (waterTopMat.current) waterTopMat.current.emissiveIntensity = night ? 2.2 : 0.25
+    if (waterMat.current) waterMat.current.emissiveIntensity = night ? 2.2 : 0.18
+    if (waterTopMat.current) waterTopMat.current.emissiveIntensity = night ? 2.2 : 0.18
     jetMat.emissiveIntensity = night ? 1.6 : 0
+    // scroll the shared ripple normal map (slow, watery drift) — refs only, no state
+    rippleMap.offset.x = (t * 0.03) % 1
+    rippleMap.offset.y = (t * 0.018) % 1
   })
 
   return (
@@ -76,13 +116,18 @@ export default function Fountain() {
       </mesh>
       <mesh position={[0, 0.9, 0]}>
         <cylinderGeometry args={[3.05, 3.05, 0.06, 36]} />
-        <meshStandardMaterial
+        <meshPhysicalMaterial
           ref={waterMat}
-          color="#3fb9e6"
+          color={WATER}
+          roughness={0.1}
+          metalness={0}
+          transmission={0.5}
+          thickness={0.5}
+          ior={1.33}
+          normalMap={rippleMap}
+          normalScale={new THREE.Vector2(0.18, 0.18)}
           emissive="#2fa7dd"
-          emissiveIntensity={0.25}
-          transparent
-          opacity={0.85}
+          emissiveIntensity={0.18}
         />
       </mesh>
 
@@ -95,13 +140,18 @@ export default function Fountain() {
       </mesh>
       <mesh position={[0, 2.32, 0]}>
         <cylinderGeometry args={[1.28, 1.28, 0.05, 28]} />
-        <meshStandardMaterial
+        <meshPhysicalMaterial
           ref={waterTopMat}
-          color="#3fb9e6"
+          color={WATER}
+          roughness={0.1}
+          metalness={0}
+          transmission={0.5}
+          thickness={0.5}
+          ior={1.33}
+          normalMap={rippleMap}
+          normalScale={new THREE.Vector2(0.18, 0.18)}
           emissive="#2fa7dd"
-          emissiveIntensity={0.25}
-          transparent
-          opacity={0.85}
+          emissiveIntensity={0.18}
         />
       </mesh>
       <mesh rotation-x={Math.PI / 2} position={[0, 2.45, 0]}>
