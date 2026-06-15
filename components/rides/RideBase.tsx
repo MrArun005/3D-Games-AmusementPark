@@ -7,6 +7,7 @@ import { CuboidCollider, RigidBody } from '@react-three/rapier'
 import { useGameStore, type RidePhase } from '@/state/useGameStore'
 import { playerRig, rideLook } from '@/lib/refs'
 import { useFestival } from '@/lib/festival'
+import { useRideOccupancy, RIDE_SEATS } from '@/lib/rideOccupancy'
 import { makeStripesTexture, makeTextTexture } from '@/lib/textures'
 import { PALETTE } from '@/lib/palette'
 import type { RideSpec } from '@/lib/spawn'
@@ -110,6 +111,13 @@ export function useRideMachine(spec: RideSpec): {
           // Fresh ride, fresh view: free-look starts centred on the ride's own framing.
           rideLook.yaw = 0
           rideLook.pitch = 0
+          if (RIDE_SEATS[spec.id] !== undefined) {
+            const occ = useRideOccupancy.getState()
+            const n = RIDE_SEATS[spec.id]
+            for (let s = 1; s < n; s++) {
+              if (Math.random() < 0.7) occ.claimSeat(spec.id, 'company', s)
+            }
+          }
           st.setRidePhase('boarding')
         }
         break
@@ -131,6 +139,7 @@ export function useRideMachine(spec: RideSpec): {
       case 'unloading':
         if (elapsed.current >= UNLOAD_TIME) {
           phase.current = 'idle'
+          if (RIDE_SEATS[spec.id] !== undefined) useRideOccupancy.getState().clearCompany(spec.id)
           elapsed.current = 0
           st.completeRide(spec.id)
           useFestival.getState().addScore(100 * spec.cost)
