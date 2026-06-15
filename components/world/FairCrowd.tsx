@@ -3,6 +3,7 @@
 import { useLayoutEffect, useMemo, useRef } from 'react'
 import * as THREE from 'three'
 import { useFrame } from '@react-three/fiber'
+import { RigidBody, CapsuleCollider } from '@react-three/rapier'
 import { useGameStore } from '@/state/useGameStore'
 import { RIDE_LIST, GAME_STALLS, mulberry32 } from '@/lib/spawn'
 import { BAZAAR } from '@/lib/palette'
@@ -198,6 +199,11 @@ export default function FairCrowd() {
 
   return (
     <group>
+      <RigidBody type="fixed" colliders={false}>
+        {people.map((p, i) => (
+          <CapsuleCollider key={i} args={[0.5 * p.s, 0.32 * p.s]} position={[p.x, 0.85 * p.s, p.z]} />
+        ))}
+      </RigidBody>
       <instancedMesh ref={skirts} args={[undefined, undefined, count]} castShadow>
         <coneGeometry args={[0.38, 0.86, 10]} />
         <meshStandardMaterial roughness={0.85} />

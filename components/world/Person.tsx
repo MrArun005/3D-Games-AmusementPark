@@ -1,5 +1,6 @@
 'use client'
 
+import { RigidBody, CapsuleCollider } from '@react-three/rapier'
 import { BAZAAR } from '@/lib/palette'
 
 /**
@@ -27,6 +28,9 @@ export default function Person({
 }) {
   return (
     <group position={position} rotation-y={yaw}>
+      <RigidBody type="fixed" colliders={false}>
+        <CapsuleCollider args={[0.5, 0.32]} position={[0, 0.85, 0]} />
+      </RigidBody>
       {saree ? (
         <>
           <mesh position={[0, 0.43, 0]} castShadow>
