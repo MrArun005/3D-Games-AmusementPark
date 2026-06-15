@@ -10,6 +10,8 @@ import { useGameStore, isNight } from '@/state/useGameStore'
 import { useRideMachine, RideTrigger, applyRideCamera } from './RideBase'
 import { PALETTE } from '@/lib/palette'
 import { makeStripesTexture } from '@/lib/textures'
+import RideRider from '@/components/world/RideRider'
+import { useRideOccupancy } from '@/lib/rideOccupancy'
 
 const spec = RIDES.carousel
 const HORSE_R = 4
@@ -42,6 +44,7 @@ export default function Carousel() {
   const trimMat = useRef<THREE.MeshStandardMaterial>(null)
   const bulbMat = useRef<THREE.MeshStandardMaterial>(null)
   const camera = useThree((s) => s.camera)
+  const seats = useRideOccupancy((s) => s.seats.carousel)
 
   const horseData = useMemo(
     () =>
@@ -204,6 +207,11 @@ export default function Carousel() {
               <mesh geometry={geo.saddle} material={mat.saddle} position={[0, 0.37, -0.02]} />
               {/* brass pole up to the canopy */}
               <mesh geometry={geo.pole} material={mat.gold} position={[0, 1.3, 0]} />
+              {seats[i] && (
+                <group position={[0, 0.42, 0]}>
+                  <RideRider variant={seats[i]!.variant} />
+                </group>
+              )}
             </group>
           </group>
         ))}
