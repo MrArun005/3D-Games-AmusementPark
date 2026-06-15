@@ -26,7 +26,6 @@ import VendorCarts from '@/components/world/VendorCarts'
 import Props from '@/components/world/Props'
 import AutoRickshaw from '@/components/world/AutoRickshaw'
 import FloodLights from '@/components/world/FloodLights'
-import FairCrowd from '@/components/world/FairCrowd'
 import EntranceGate from '@/components/structures/EntranceGate'
 import TicketBooth from '@/components/structures/TicketBooth'
 import FoodStall from '@/components/structures/FoodStall'
@@ -72,7 +71,6 @@ export default function Scene() {
         <Props />
         <AutoRickshaw />
         <FloodLights />
-        <FairCrowd />
 
         <EntranceGate />
         <TicketBooth />
