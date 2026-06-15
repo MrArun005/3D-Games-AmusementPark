@@ -4,11 +4,12 @@ import { useTexture } from '@react-three/drei'
 
 export interface PbrSet { dir: string; color: string; normal: string; rough: string }
 
-/** Filenames are the exact CC0 ambientCG files downloaded in Realism Task 1. */
-export const PBR_SETS: Record<'grass' | 'paving' | 'dirt', PbrSet> = {
+/** Filenames are the exact CC0 ambientCG files downloaded in the realism asset spikes. */
+export const PBR_SETS: Record<'grass' | 'paving' | 'dirt' | 'wood', PbrSet> = {
   grass:  { dir: '/textures/grass',  color: 'Grass004_1K-JPG_Color.jpg',  normal: 'Grass004_1K-JPG_NormalGL.jpg',  rough: 'Grass004_1K-JPG_Roughness.jpg' },
   paving: { dir: '/textures/paving', color: 'PavingStones070_1K-JPG_Color.jpg', normal: 'PavingStones070_1K-JPG_NormalGL.jpg', rough: 'PavingStones070_1K-JPG_Roughness.jpg' },
   dirt:   { dir: '/textures/dirt',   color: 'Ground054_1K-JPG_Color.jpg',   normal: 'Ground054_1K-JPG_NormalGL.jpg',   rough: 'Ground054_1K-JPG_Roughness.jpg' },
+  wood:   { dir: '/textures/wood',   color: 'Planks021_1K-JPG_Color.jpg',  normal: 'Planks021_1K-JPG_NormalGL.jpg',  rough: 'Planks021_1K-JPG_Roughness.jpg' },
 }
 
 /**
