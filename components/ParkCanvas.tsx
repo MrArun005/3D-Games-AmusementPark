@@ -1,8 +1,9 @@
 'use client'
 
 import { Suspense, useEffect } from 'react'
+import * as THREE from 'three'
 import { Canvas, useThree } from '@react-three/fiber'
-import { EffectComposer, Bloom } from '@react-three/postprocessing'
+import { EffectComposer, Bloom, SSAO } from '@react-three/postprocessing'
 import { Leva } from 'leva'
 import Scene from '@/components/Scene'
 import { useGameStore, type Quality } from '@/state/useGameStore'
@@ -23,13 +24,14 @@ function QualityManager() {
   return null
 }
 
-/** Bloom only on High — makes the night neon glow. */
+/** SSAO on medium+high (contact shadows); Bloom only on High (night neon glow). */
 function PostFX() {
   const quality = useGameStore((s) => s.quality)
-  if (quality !== 'high') return null
+  if (quality === 'low') return null
   return (
-    <EffectComposer>
-      <Bloom mipmapBlur intensity={0.8} luminanceThreshold={1.05} />
+    <EffectComposer enableNormalPass>
+      <SSAO intensity={18} radius={0.12} luminanceInfluence={0.5} color={new THREE.Color('black')} />
+      {quality === 'high' ? <Bloom mipmapBlur intensity={0.8} luminanceThreshold={1.05} /> : <></>}
     </EffectComposer>
   )
 }
@@ -42,6 +44,7 @@ export default function ParkCanvas() {
         camera={{ fov: 75, near: 0.1, far: 400, position: [0, 2, 50] }}
         onCreated={({ gl }) => {
           playerRig.canvas = gl.domElement
+          gl.shadowMap.type = THREE.PCFSoftShadowMap
         }}
       >
         <color attach="background" args={['#0b1026']} />
