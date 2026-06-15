@@ -2,6 +2,7 @@
 
 import { useGameStore, type Quality } from '@/state/useGameStore'
 import { requestPointerLock } from '@/lib/refs'
+import { creatorControl } from '@/components/ui/CharacterCreator'
 
 const QUALITIES: Quality[] = ['low', 'medium', 'high']
 
@@ -54,6 +55,8 @@ export default function PauseMenu() {
     requestPointerLock()
   }
 
+  const editCharacter = () => { setPaused(false); creatorControl.open() }
+
   return (
     <div className="pointer-events-auto absolute inset-0 flex items-center justify-center bg-black/60 backdrop-blur-sm">
       <div className="w-[26rem] max-w-[92vw] overflow-hidden rounded-lg border-4 border-[#8e0c20] bg-[#fff3dc] font-[Georgia,'Times_New_Roman',serif] text-[#8e0c20] shadow-2xl">
@@ -68,6 +71,13 @@ export default function PauseMenu() {
             className="mt-5 w-full rounded-md border-2 border-[#f2a900] bg-[#8e0c20] py-3 font-bold uppercase tracking-widest text-[#ffd23f] shadow-md transition hover:bg-[#c8102e]"
           >
             ▶ Resume the Show
+          </button>
+
+          <button
+            onClick={editCharacter}
+            className="mt-3 w-full rounded-md border-2 border-[#f2a900] bg-[#fff3dc] py-2.5 font-bold uppercase tracking-widest text-[#8e0c20] shadow-md transition hover:bg-[#f2a900]/20"
+          >
+            🎭 Edit character
           </button>
 
           <div className="mt-5">
