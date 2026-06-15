@@ -33,7 +33,7 @@ export default function PlayerAvatar() {
     return { mixer, walk, idle }
   }, [built, animations])
 
-  useEffect(() => () => anim.mixer.stopAllAction(), [anim])
+  useEffect(() => () => { anim.mixer.stopAllAction() }, [anim])
 
   useFrame((_, dt) => {
     const st = useGameStore.getState()
