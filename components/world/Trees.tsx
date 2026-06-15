@@ -12,8 +12,11 @@ interface Tree {
 }
 
 /**
- * ~100 instanced trees (trunk + canopy instanced separately) seeded
- * deterministically, rejection-sampled away from ride pads and the gate.
+ * ~100 instanced trees seeded deterministically and rejection-sampled away from
+ * ride pads and the gate. The trunk is one instanced layer; the canopy is THREE
+ * stacked/offset instanced cone layers (same per-tree transform) for a fuller,
+ * rounder crown. Foliage is tinted per-instance for variety and uses a high
+ * roughness so it reads naturally under the IBL/sky.
  */
 export default function Trees() {
   const trees = useMemo<Tree[]>(() => {
@@ -28,25 +31,53 @@ export default function Trees() {
       const z = Math.sin(a) * r
       if (RIDE_LIST.some((s) => (x - s.position[0]) ** 2 + (z - s.position[2]) ** 2 < 170)) continue
       if (x * x + (z - 40) ** 2 < 120) continue // keep the gate clear
-      arr.push({ x, z, s: 0.8 + rnd() * 0.7, shade: `hsl(115, 45%, ${22 + Math.round(rnd() * 14)}%)` })
+      // Per-instance green tint: vary both hue (slightly) and lightness so the
+      // canopy isn't a uniform colour. Base material is white so this multiplies.
+      arr.push({
+        x,
+        z,
+        s: 0.8 + rnd() * 0.7,
+        shade: `hsl(${108 + Math.round(rnd() * 18)}, ${40 + Math.round(rnd() * 14)}%, ${24 + Math.round(rnd() * 14)}%)`,
+      })
     }
     return arr
   }, [])
 
   return (
     <group>
+      {/* trunk — wood brown, very rough */}
       <Instances limit={trees.length} castShadow>
         <cylinderGeometry args={[0.18, 0.26, 1.6, 7]} />
-        <meshStandardMaterial color="#6b4a2f" />
+        <meshStandardMaterial color="#5c3d22" roughness={0.95} />
         {trees.map((t, i) => (
           <Instance key={i} position={[t.x, 0.8 * t.s, t.z]} scale={t.s} />
         ))}
       </Instances>
+
+      {/* canopy bottom (widest) */}
       <Instances limit={trees.length} castShadow>
-        <coneGeometry args={[1.3, 2.8, 8]} />
-        <meshStandardMaterial color="#3f7a3f" />
+        <coneGeometry args={[1.45, 2.4, 8]} />
+        <meshStandardMaterial color="#ffffff" roughness={0.9} />
         {trees.map((t, i) => (
-          <Instance key={i} position={[t.x, (1.6 + 1.3) * t.s, t.z]} scale={t.s} color={t.shade} />
+          <Instance key={i} position={[t.x, (1.6 + 1.0) * t.s, t.z]} scale={t.s} color={t.shade} />
+        ))}
+      </Instances>
+
+      {/* canopy middle */}
+      <Instances limit={trees.length} castShadow>
+        <coneGeometry args={[1.15, 2.2, 8]} />
+        <meshStandardMaterial color="#ffffff" roughness={0.9} />
+        {trees.map((t, i) => (
+          <Instance key={i} position={[t.x, (1.6 + 1.85) * t.s, t.z]} scale={t.s} color={t.shade} />
+        ))}
+      </Instances>
+
+      {/* canopy top (narrowest, points the crown) */}
+      <Instances limit={trees.length} castShadow>
+        <coneGeometry args={[0.8, 1.9, 8]} />
+        <meshStandardMaterial color="#ffffff" roughness={0.9} />
+        {trees.map((t, i) => (
+          <Instance key={i} position={[t.x, (1.6 + 2.7) * t.s, t.z]} scale={t.s} color={t.shade} />
         ))}
       </Instances>
     </group>

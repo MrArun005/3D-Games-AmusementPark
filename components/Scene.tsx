@@ -12,6 +12,7 @@ import Lighting from '@/components/world/Lighting'
 import Pathways from '@/components/world/Pathways'
 import Fence from '@/components/world/Fence'
 import Trees from '@/components/world/Trees'
+import GroundDetail from '@/components/world/GroundDetail'
 import Lamps from '@/components/world/Lamps'
 import Crowd from '@/components/world/Crowd'
 import SpeechBubbles from '@/components/world/SpeechBubbles'
@@ -57,6 +58,7 @@ export default function Scene() {
         <Fence />
         <Fountain />
         <Trees />
+        <GroundDetail />
         <Lamps />
         <Crowd />
         <SpeechBubbles />
