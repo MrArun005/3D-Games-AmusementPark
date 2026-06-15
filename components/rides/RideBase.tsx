@@ -20,19 +20,29 @@ const _qYaw = new THREE.Quaternion()
 const _qPitch = new THREE.Quaternion()
 const Y_AXIS = new THREE.Vector3(0, 1, 0)
 const X_AXIS = new THREE.Vector3(1, 0, 0)
+const Z_AXIS = new THREE.Vector3(0, 0, 1)
+const _qRoll = new THREE.Quaternion()
 
 /**
  * Shared ride camera: moves to `pos` (hard-locked or eased), frames `target`,
  * then applies the player's drag-to-look offsets in camera-local space — so
  * every ride supports a full 360° look-around while the base view still
  * follows the ride's motion.
+ *
+ * The optional `g` parameter feeds in ride-force cues — a small camera roll
+ * (lean), an FOV nudge and a tiny positional jitter — so the player FEELS the
+ * ride's motion without the seated body ever being physically flung. Every cue
+ * is deliberately subtle (this path is nausea-sensitive). The FOV nudge is
+ * absolute against a 75° base and self-heals: the player controller eases the
+ * perspective FOV back toward 75 the moment walking resumes after the ride.
  */
 export function applyRideCamera(
   camera: THREE.Camera,
   pos: THREE.Vector3,
   target: THREE.Vector3,
   dt: number,
-  hard = false
+  hard = false,
+  g?: { roll?: number; fov?: number; shake?: number }
 ): void {
   if (hard) camera.position.copy(pos)
   else camera.position.lerp(pos, 1 - Math.pow(0.0001, dt))
@@ -41,6 +51,25 @@ export function applyRideCamera(
   _qYaw.setFromAxisAngle(Y_AXIS, rideLook.yaw)
   _qPitch.setFromAxisAngle(X_AXIS, rideLook.pitch)
   camera.quaternion.copy(_qBase).multiply(_qYaw).multiply(_qPitch)
+
+  if (g) {
+    if (g.roll) {
+      _qRoll.setFromAxisAngle(Z_AXIS, g.roll)
+      camera.quaternion.multiply(_qRoll)
+    }
+    if (g.shake) {
+      // Time-free deterministic jitter keyed off the live position — no RNG,
+      // so it stays frame-rate stable and replays identically.
+      camera.position.x += Math.sin(pos.y * 53.1) * g.shake
+      camera.position.y += Math.sin(pos.y * 71.7) * g.shake
+    }
+    const cam = camera as THREE.PerspectiveCamera
+    if (cam.isPerspectiveCamera) {
+      const targetFov = 75 + (g.fov ?? 0)
+      cam.fov += (targetFov - cam.fov) * (1 - Math.pow(0.0001, dt * 4))
+      cam.updateProjectionMatrix()
+    }
+  }
 }
 
 

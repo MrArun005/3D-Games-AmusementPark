@@ -193,6 +193,7 @@ export default function RollerCoaster() {
       }
     }
 
+    let frontBank = 0 // banking of the lead cart this frame, reused for the camera lean
     for (let i = 0; i < 3; i++) {
       const cart = carts.current[i]
       if (!cart) continue
@@ -209,6 +210,7 @@ export default function RollerCoaster() {
       _side.crossVectors(_tan, _up).normalize()
       const bank = THREE.MathUtils.clamp(_d.subVectors(_tan2, _tan).dot(_side) * -28, -0.7, 0.7)
       cart.rotateZ(bank)
+      if (i === 0) frontBank = bank
     }
 
     const front = carts.current[0]
@@ -228,9 +230,20 @@ export default function RollerCoaster() {
       _w.y += 0.7
       curve.getTangentAt(u.current, _tan)
       _lookT.copy(_w).addScaledVector(_tan, 6)
+      // Speed-of-rush FOV (0 at the 2.5 m/s creep, up to +6 near the 16 m/s
+      // top speed) plus a gentle lean that echoes — at a fraction of its size —
+      // the lead cart's own banking through turns. Cues only fire while
+      // actually running; boarding/parked hold the calm default.
+      const g =
+        phase.current === 'running'
+          ? {
+              fov: THREE.MathUtils.clamp((v - 2.5) * 0.45, 0, 6),
+              roll: THREE.MathUtils.clamp(frontBank * 0.3, -0.15, 0.15),
+            }
+          : undefined
       // hard position lock while running (no swim); base view follows the track
       // and the player's drag-to-look offset is applied on top.
-      applyRideCamera(camera, _w, _lookT, dt, phase.current !== 'boarding')
+      applyRideCamera(camera, _w, _lookT, dt, phase.current !== 'boarding', g)
       void state
     }
   })

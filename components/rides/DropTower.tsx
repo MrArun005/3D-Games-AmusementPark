@@ -45,6 +45,28 @@ function towerY(t: number): number {
   return 0.8
 }
 
+/**
+ * Ride-force cue for the camera, derived purely from the fall timeline:
+ * during the sharp free-fall (t in [11, 11.6)) widen the FOV up to +5 for the
+ * stomach-drop, scaled by how deep into the fall we are; on the catch/bounce
+ * (the first ~0.35 s after impact) add a brief positional shake. No roll — a
+ * straight vertical drop has no lateral lean. All cues fade to nothing outside
+ * these windows so the rest of the ride stays calm.
+ */
+function dropG(t: number): { fov: number; shake: number } {
+  if (t >= 11 && t < 11.6) {
+    // k 0->1 across the fall; ease so the kick builds rather than snapping on.
+    const k = (t - 11) / 0.6
+    return { fov: 5 * k * k, shake: 0 }
+  }
+  if (t >= 11.6 && t < 11.95) {
+    // Impact jolt, decaying over the first third of a second of the bounce.
+    const k = 1 - (t - 11.6) / 0.35
+    return { fov: 0, shake: 0.04 * k }
+  }
+  return { fov: 0, shake: 0 }
+}
+
 interface BraceXform {
   position: [number, number, number]
   rotation: [number, number, number]
@@ -194,7 +216,9 @@ export default function DropTower() {
       _dir.copy(outDir)
       _t.copy(_v).addScaledVector(_dir, 30)
       _t.y = Math.max(1, _v.y * 0.55) // gaze dips toward the park below
-      applyRideCamera(camera, _v, _t, dt)
+      // Stomach-drop FOV + catch shake, only during the RUNNING fall timeline.
+      const g = phase.current === 'running' ? dropG(elapsed.current) : undefined
+      applyRideCamera(camera, _v, _t, dt, false, g)
     }
   })
 

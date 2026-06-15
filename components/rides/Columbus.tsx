@@ -38,6 +38,7 @@ export default function Columbus() {
   const seatRef = useRef<THREE.Group>(null)
   const trimMat = useRef<THREE.MeshStandardMaterial>(null)
   const camera = useThree((s) => s.camera)
+  const prevAngle = useRef(0) // last swing angle, for angular-velocity cue
 
   // a row of seats slung under the hull
   const seats = useMemo(() => Array.from({ length: 5 }, (_, i) => -2 + i), [])
@@ -49,6 +50,7 @@ export default function Columbus() {
     const mine = st.activeRide === spec.id
     const running = mine && phase.current === 'running'
 
+    let angVel = 0 // swing angular velocity (rad/s) for the lean cue
     if (!st.paused) {
       let angle: number
       if (running) {
@@ -58,6 +60,8 @@ export default function Columbus() {
         // gentle idle sway, easing back toward level
         angle = g.rotation.x * Math.pow(0.2, dt) + Math.sin(state.clock.elapsedTime * 0.6) * 0.04
       }
+      angVel = dt > 0 ? (angle - prevAngle.current) / dt : 0
+      prevAngle.current = angle
       g.rotation.x = angle
     }
     if (trimMat.current) trimMat.current.emissiveIntensity = isNight(st.timeOfDay) ? 2 : 0.1
@@ -69,7 +73,11 @@ export default function Columbus() {
       seatRef.current.getWorldDirection(_fwd)
       _target.copy(_seat).addScaledVector(_fwd, -6)
       _target.y -= 1.5
-      applyRideCamera(camera, _seat, _target, dt)
+      // Lean into the swing: roll proportional to swing angular velocity,
+      // clamped to ±0.15 rad. Peak sweep is ~±1.4 rad/s, so ×0.1 keeps the
+      // lean honest without overdriving the clamp.
+      const roll = THREE.MathUtils.clamp(angVel * 0.1, -0.15, 0.15)
+      applyRideCamera(camera, _seat, _target, dt, false, { roll })
     }
   })
 

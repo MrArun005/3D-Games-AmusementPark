@@ -132,7 +132,13 @@ export default function TeacupSpinner() {
         _v.y += 0.9
         tb.getWorldPosition(_t) // looking at the turntable hub = dizzy orbit view
         _t.y = _v.y - 0.35
-        applyRideCamera(camera, _v, _t, dt)
+        // Outward centrifugal lean: net spin rate of the ridden cup (its own
+        // eased spin + the player's A/D boost + the platform's carry) mapped to
+        // a small roll, clamped to ±0.18 rad. A touch of FOV at full whirl.
+        const spin = cupSpeed.current + spinBoost.current + platSpeed.current
+        const roll = THREE.MathUtils.clamp(spin * 0.03, -0.18, 0.18)
+        const fov = THREE.MathUtils.clamp(Math.abs(spin) * 0.5, 0, 3)
+        applyRideCamera(camera, _v, _t, dt, false, { roll, fov })
       }
     }
   })
