@@ -54,14 +54,17 @@ export function findClip(
 
 /** Standing height in metres at config.scale === 1 (a touch under the ~1.8 m player capsule). */
 export const TARGET_HEIGHT = 1.7
+/** Measured rendered height of these models at their baked scale (~4.8 m, see scripts). */
+const MODEL_RAW_HEIGHT = 4.8
+/** Fixed factor that brings the pack's giant default size down to human height. */
+const BASE_SCALE = TARGET_HEIGHT / MODEL_RAW_HEIGHT // ≈ 0.354
 
 /**
- * Build a configured, independent clone, normalised to a consistent human height
- * with feet at y=0. The pack's models carry a baked node-scale (~100×) and an
- * origin that isn't at the feet, so we MEASURE the assembled bounding box and
- * rescale/translate rather than trusting the file's units. The model is wrapped
- * in a group so a caller's `position.set(x, 0, z)` places it by its ground point
- * without clobbering the internal feet-to-0 offset.
+ * Build a configured, independent clone scaled to human height. The pack renders
+ * at ~4.8 m tall by default, so we apply a fixed BASE_SCALE (no runtime measuring —
+ * that proved unreliable on the skinned clones). The model's origin already sits
+ * at the feet, so a caller's `position.set(x, 0, z)` grounds it. Wrapped in a group
+ * so props the caller attaches (e.g. a balloon) stay at world scale above the head.
  */
 export function buildCharacter(source: THREE.Object3D, config: CharacterConfig): THREE.Object3D {
   const model = SkeletonUtils.clone(source)
@@ -78,17 +81,7 @@ export function buildCharacter(source: THREE.Object3D, config: CharacterConfig):
     if (tint) mat.color.multiply(tint)
     m.material = mat
   })
-
-  // Normalise size to TARGET_HEIGHT * scale regardless of the model's baked units.
-  model.updateWorldMatrix(true, true)
-  const box = new THREE.Box3().setFromObject(model)
-  const h = box.max.y - box.min.y
-  const k = h > 1e-4 ? (TARGET_HEIGHT * config.scale) / h : config.scale
-  model.scale.multiplyScalar(k)
-  // Drop the feet to y=0 within the wrapper.
-  model.updateWorldMatrix(true, true)
-  const grounded = new THREE.Box3().setFromObject(model)
-  model.position.y -= grounded.min.y
+  model.scale.setScalar(config.scale * BASE_SCALE)
 
   const wrapper = new THREE.Group()
   wrapper.add(model)
