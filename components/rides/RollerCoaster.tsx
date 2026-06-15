@@ -238,7 +238,7 @@ export default function RollerCoaster() {
   return (
     <group position={spec.position}>
       <mesh geometry={spine} castShadow>
-        <meshStandardMaterial color={PALETTE.navy} metalness={0.4} roughness={0.5} />
+        <meshStandardMaterial color={PALETTE.navy} metalness={0.2} roughness={0.4} />
       </mesh>
       <mesh geometry={railL} castShadow>
         <meshStandardMaterial
@@ -251,7 +251,7 @@ export default function RollerCoaster() {
         />
       </mesh>
       <mesh geometry={railR} castShadow>
-        <meshStandardMaterial color={PALETTE.gold} metalness={0.65} roughness={0.3} />
+        <meshStandardMaterial color={PALETTE.gold} metalness={0.9} roughness={0.25} />
       </mesh>
 
       <Instances limit={ties.length} castShadow>
@@ -264,7 +264,7 @@ export default function RollerCoaster() {
 
       <Instances limit={supports.length}>
         <cylinderGeometry args={[0.12, 0.15, 1, 8]} />
-        <meshStandardMaterial color={PALETTE.navy} roughness={0.6} />
+        <meshStandardMaterial color={PALETTE.navy} metalness={0.2} roughness={0.4} />
         {supports.map((s, i) => (
           <Instance key={i} position={s.pos} scale={[1, s.h, 1]} />
         ))}
@@ -272,7 +272,7 @@ export default function RollerCoaster() {
 
       <Instances limit={kickers.length}>
         <cylinderGeometry args={[0.06, 0.07, 1, 6]} />
-        <meshStandardMaterial color={PALETTE.navy} roughness={0.6} />
+        <meshStandardMaterial color={PALETTE.navy} metalness={0.2} roughness={0.4} />
         {kickers.map((k, i) => (
           <Instance key={i} position={k.pos} rotation={[0, 0, k.rotZ]} scale={[1, k.len, 1]} />
         ))}

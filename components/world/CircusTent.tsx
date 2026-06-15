@@ -66,13 +66,13 @@ export default function CircusTent() {
       {/* striped canvas drum */}
       <mesh position={[0, WALL_HEIGHT / 2, 0]} castShadow receiveShadow>
         <cylinderGeometry args={[WALL_RADIUS, WALL_RADIUS, WALL_HEIGHT, 32, 1, true]} />
-        <meshStandardMaterial map={stripeTex} side={THREE.DoubleSide} roughness={0.85} />
+        <meshStandardMaterial map={stripeTex} side={THREE.DoubleSide} metalness={0} roughness={0.85} />
       </mesh>
 
       {/* swooping roof — stripes read as radial wedges on the lathe */}
       <mesh position={[0, WALL_HEIGHT, 0]} castShadow>
         <latheGeometry args={[roofPoints, 32]} />
-        <meshStandardMaterial map={stripeTex} side={THREE.DoubleSide} roughness={0.8} />
+        <meshStandardMaterial map={stripeTex} side={THREE.DoubleSide} metalness={0} roughness={0.85} />
       </mesh>
 
       {/* gold trim rings at the rim and the base */}

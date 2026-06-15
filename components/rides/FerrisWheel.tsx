@@ -56,8 +56,8 @@ export default function FerrisWheel() {
       collarSmall: new THREE.TorusGeometry(0.19, 0.045, 8, 18),
       red: new THREE.MeshStandardMaterial({ color: PALETTE.red, roughness: 0.45 }),
       cream: new THREE.MeshStandardMaterial({ color: PALETTE.cream, roughness: 0.55 }),
-      gold: new THREE.MeshStandardMaterial({ color: PALETTE.gold, metalness: 0.65, roughness: 0.3 }),
-      navy: new THREE.MeshStandardMaterial({ color: PALETTE.navy, roughness: 0.7 }),
+      gold: new THREE.MeshStandardMaterial({ color: PALETTE.gold, metalness: 0.9, roughness: 0.25 }),
+      navy: new THREE.MeshStandardMaterial({ color: PALETTE.navy, metalness: 0.2, roughness: 0.4 }),
       roof: new THREE.MeshStandardMaterial({ map: roofTex, roughness: 0.65 }),
       hubCap: new THREE.MeshStandardMaterial({ map: hubTex, roughness: 0.6 }),
       fascia: new THREE.MeshStandardMaterial({ map: fasciaTex, roughness: 0.7 }),
@@ -269,14 +269,14 @@ export default function FerrisWheel() {
         </Instances>
         <Instances limit={braceAngles.length}>
           <cylinderGeometry args={[0.045, 0.045, RIM_Z * 2, 6]} />
-          <meshStandardMaterial color={PALETTE.gold} metalness={0.5} roughness={0.35} />
+          <meshStandardMaterial color={PALETTE.gold} metalness={0.9} roughness={0.25} />
           {braceAngles.map((a, i) => (
             <Instance key={i} position={[Math.cos(a) * RADIUS, Math.sin(a) * RADIUS, 0]} rotation={[Math.PI / 2, 0, 0]} />
           ))}
         </Instances>
         <Instances limit={spokes.length}>
           <cylinderGeometry args={[0.05, 0.05, RADIUS, 6]} />
-          <meshStandardMaterial color={PALETTE.cream} roughness={0.6} />
+          <meshStandardMaterial color={PALETTE.cream} metalness={0.2} roughness={0.4} />
           {spokes.map((s, i) => (
             <Instance key={i} position={s.pos} rotation={s.rot} />
           ))}

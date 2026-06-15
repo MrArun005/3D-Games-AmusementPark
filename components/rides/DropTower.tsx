@@ -74,7 +74,7 @@ export default function DropTower() {
     [stripeTex]
   )
   const goldMat = useMemo(
-    () => new THREE.MeshStandardMaterial({ color: PALETTE.gold, metalness: 0.45, roughness: 0.35 }),
+    () => new THREE.MeshStandardMaterial({ color: PALETTE.gold, metalness: 0.9, roughness: 0.25 }),
     []
   )
   const seatMat = useMemo(() => new THREE.MeshStandardMaterial({ color: PALETTE.red }), [])
@@ -235,7 +235,7 @@ export default function DropTower() {
       </RigidBody>
       <Instances limit={4} castShadow>
         <cylinderGeometry args={[0.09, 0.11, TOWER_H, 8]} />
-        <meshStandardMaterial color={PALETTE.navy} />
+        <meshStandardMaterial color={PALETTE.navy} metalness={0.2} roughness={0.4} />
         {[
           [POST, POST],
           [-POST, POST],
@@ -247,7 +247,7 @@ export default function DropTower() {
       </Instances>
       <Instances limit={braces.length}>
         <cylinderGeometry args={[0.035, 0.035, 1, 6]} />
-        <meshStandardMaterial color={PALETTE.cream} />
+        <meshStandardMaterial color={PALETTE.cream} metalness={0.2} roughness={0.4} />
         {braces.map((b, i) => (
           <Instance key={i} position={b.position} rotation={b.rotation} scale={b.scale} />
         ))}
