@@ -52,7 +52,22 @@ export function findClip(
   return animations.find((a) => re.test(a.name))
 }
 
-/** Build a configured, independent clone. Implemented for real in Task 3. */
-export function buildCharacter(_source: THREE.Object3D, _config: CharacterConfig): THREE.Object3D {
-  throw new Error('buildCharacter not implemented yet (Task 3)')
+/** Build a configured, independent clone. */
+export function buildCharacter(source: THREE.Object3D, config: CharacterConfig): THREE.Object3D {
+  const root = SkeletonUtils.clone(source)
+  const tint = config.accent > 0
+    ? new THREE.Color('#ffffff').lerp(new THREE.Color(ACCENT_COLORS[config.accent]), 0.28)
+    : null
+  root.traverse((o) => {
+    const m = o as THREE.Mesh
+    if (!m.isMesh) return
+    m.castShadow = true
+    m.frustumCulled = false // skinned bounds lag the body; never pop out (matches Crowd/PlayerAvatar)
+    // Clone the material so per-instance tints never bleed across clones.
+    const mat = (m.material as THREE.MeshStandardMaterial).clone()
+    if (tint) mat.color.multiply(tint)
+    m.material = mat
+  })
+  root.scale.setScalar(config.scale)
+  return root
 }
