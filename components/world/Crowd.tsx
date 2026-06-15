@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useRef } from 'react'
 import * as THREE from 'three'
 import { useFrame } from '@react-three/fiber'
+import { useRapier, type RapierRigidBody } from '@react-three/rapier'
 import { useGLTF } from '@react-three/drei'
 import { useGameStore, type Quality } from '@/state/useGameStore'
 import { mulberry32, WAYPOINTS } from '@/lib/spawn'
@@ -106,6 +107,29 @@ export default function Crowd() {
     return list
   }, [gltfs])
 
+  // Each visible NPC gets a kinematic-position capsule so the player collides
+  // with people. Created imperatively (the visual roots are moved by steering
+  // math, not a <RigidBody>), then driven to follow each NPC every frame.
+  const { world, rapier } = useRapier()
+  const bodies = useRef<RapierRigidBody[]>([])
+
+  useEffect(() => {
+    const created: RapierRigidBody[] = []
+    for (let i = 0; i < npcs.length; i++) {
+      const n = npcs[i]
+      const body = world.createRigidBody(
+        rapier.RigidBodyDesc.kinematicPositionBased().setTranslation(n.x, 0.9, n.z),
+      )
+      world.createCollider(rapier.ColliderDesc.capsule(0.55, 0.3), body)
+      created.push(body)
+    }
+    bodies.current = created
+    return () => {
+      created.forEach((b) => world.removeRigidBody(b))
+      bodies.current = []
+    }
+  }, [npcs, world, rapier])
+
   // attach the clones to the scene graph once
   useEffect(() => {
     const g = group.current
@@ -169,10 +193,24 @@ export default function Crowd() {
           n.x += ppx * push
           n.z += ppz * push
         }
+        // steer around the player so NPCs don't walk into the (now solid) body
+        const pdx = n.x - px
+        const pdz = n.z - pz
+        const pd = Math.hypot(pdx, pdz)
+        const PLAYER_AVOID_R = 2.2
+        if (pd < PLAYER_AVOID_R && pd > 0.001) {
+          const push = (PLAYER_AVOID_R - pd) * 1.5 * dt
+          n.x += (pdx / pd) * push
+          n.z += (pdz / pd) * push
+        }
       }
 
       n.root.position.set(n.x, 0, n.z)
       n.root.rotation.y = n.yaw
+
+      // move the kinematic capsule to follow the NPC
+      const body = bodies.current[i]
+      if (body) body.setNextKinematicTranslation({ x: n.x, y: 0.9, z: n.z })
 
       // publish transform for the speech-bubble system
       const a = (crowdAgents[i] ??= { x: 0, z: 0, y: 0, idle: false })
@@ -195,6 +233,10 @@ export default function Crowd() {
         }
         n.mixer.update(dt)
       }
+    }
+    // park colliders of NPCs hidden by the quality LOD far below the floor
+    for (let i = count; i < bodies.current.length; i++) {
+      bodies.current[i].setNextKinematicTranslation({ x: 0, y: -50, z: 0 })
     }
     crowdAgents.length = count
   })
