@@ -7,7 +7,9 @@ import { useRapier, type RapierRigidBody } from '@react-three/rapier'
 import { useGLTF } from '@react-three/drei'
 import { useGameStore, type Quality } from '@/state/useGameStore'
 import { mulberry32, WAYPOINTS } from '@/lib/spawn'
-import { CROWD_TARGETS, crowdAgents } from '@/lib/crowd'
+import { crowdAgents } from '@/lib/crowd'
+import { pickGoal, STATION_BY_ID, type Goal } from '@/lib/npc'
+import { StationQueue } from '@/lib/queue'
 import { buildCharacter, randomConfig, findClip, CHARACTER_MODELS, CHARACTER_URLS, ACCENT_COLORS } from '@/lib/characters'
 
 /** Bright balloon colours (skip index 0 = white) for the "bought something" prop. */
@@ -35,6 +37,9 @@ interface Npc {
   mixer: THREE.AnimationMixer
   walkAction: THREE.AnimationAction
   idleAction: THREE.AnimationAction | null
+  goal: Goal
+  phase: 'seeking' | 'queuing' | 'busy'
+  timer: number
 }
 
 /**
@@ -54,7 +59,7 @@ export default function Crowd() {
     const list: Npc[] = []
     for (let i = 0; i < MAX; i++) {
       const wp = WAYPOINTS[Math.floor(rnd() * WAYPOINTS.length)]
-      const target = WAYPOINTS[Math.floor(rnd() * WAYPOINTS.length)]
+      const goal = pickGoal(rnd)
       const cfg = randomConfig(rnd)
       const { scene, animations } = gltfs[cfg.model]
       const root = buildCharacter(scene, cfg)
@@ -92,8 +97,8 @@ export default function Crowd() {
       list.push({
         x: wp[0] + (rnd() - 0.5) * 3,
         z: wp[1] + (rnd() - 0.5) * 3,
-        tx: target[0],
-        tz: target[1],
+        tx: goal.x,
+        tz: goal.z,
         speed: 0.7 + rnd() * 0.9,
         idle: 0,
         yaw: rnd() * Math.PI * 2,
@@ -102,10 +107,24 @@ export default function Crowd() {
         mixer,
         walkAction,
         idleAction,
+        goal,
+        phase: 'seeking',
+        timer: 0,
       })
     }
     return list
   }, [gltfs])
+
+  // One FIFO queue per ride/game station — agents (NPC loop index) line up,
+  // shuffle through physical slots, and the front "boards" then dwells (busy).
+  const queues = useMemo(() => {
+    const m = new Map<string, StationQueue>()
+    for (const s of Object.values(STATION_BY_ID)) {
+      if (s.kind === 'ride' || s.kind === 'game') m.set(s.id, new StationQueue(s.slots))
+    }
+    return m
+  }, [])
+  const rndRef = useRef(mulberry32(555))
 
   // Each visible NPC gets a kinematic-position capsule so the player collides
   // with people. Created imperatively (the visual roots are moved by steering
@@ -163,22 +182,40 @@ export default function Crowd() {
       let walking = false
       if (n.idle > 0) {
         n.idle -= dt
-      } else if (d < 1) {
-        // Half the time take a SHORT hop to a nearby spot so people cluster and
-        // linger (and chat); otherwise stroll off to a random stall/ride front.
-        let wp: [number, number]
-        if (Math.random() < 0.5) {
-          const nearby = CROWD_TARGETS.filter(
-            (t) => (t[0] - n.x) ** 2 + (t[1] - n.z) ** 2 < 14 * 14
-          )
-          wp = (nearby.length ? nearby : CROWD_TARGETS)[Math.floor(Math.random() * (nearby.length || CROWD_TARGETS.length))]
-        } else {
-          wp = CROWD_TARGETS[Math.floor(Math.random() * CROWD_TARGETS.length)]
+      } else if (n.phase === 'busy') {
+        n.timer -= dt
+        if (n.timer <= 0) {
+          n.goal = pickGoal(rndRef.current)
+          n.tx = n.goal.x
+          n.tz = n.goal.z
+          n.phase = 'seeking'
         }
-        n.tx = wp[0] + (Math.random() - 0.5) * 2.5
-        n.tz = wp[1] + (Math.random() - 0.5) * 2.5
-        // linger most of the time (browse / chat) so bubbles have time to show
-        if (Math.random() < 0.8) n.idle = 2.5 + Math.random() * 3.5
+      } else if (d < 1.4) {
+        const q = queues.get(n.goal.id)
+        if ((n.goal.kind === 'ride' || n.goal.kind === 'game') && q) {
+          if (n.phase !== 'queuing') {
+            if (!q.join(i)) {
+              n.goal = pickGoal(rndRef.current)
+              n.tx = n.goal.x
+              n.tz = n.goal.z
+            } else {
+              n.phase = 'queuing'
+            }
+          }
+          if (n.phase === 'queuing') {
+            const slot = q.slotFor(i)
+            if (slot) { n.tx = slot.x; n.tz = slot.z }
+            if (q.frontReady(i)) {
+              q.leaveFront()
+              n.phase = 'busy'
+              n.timer = n.goal.kind === 'ride' ? 6 : 4
+            }
+          }
+        } else {
+          // food / stroll: dwell briefly, then move on
+          n.phase = 'busy'
+          n.timer = n.goal.kind === 'food' ? 4 : 1.5
+        }
       } else {
         walking = true
         n.yaw = Math.atan2(dx, dz)
@@ -237,6 +274,9 @@ export default function Crowd() {
     // park colliders of NPCs hidden by the quality LOD far below the floor
     for (let i = count; i < bodies.current.length; i++) {
       bodies.current[i].setNextKinematicTranslation({ x: 0, y: -50, z: 0 })
+      // don't let a now-hidden NPC keep holding a queue slot
+      const hn = npcs[i]
+      if (hn && hn.phase === 'queuing') { queues.get(hn.goal.id)?.remove(i); hn.phase = 'seeking' }
     }
     crowdAgents.length = count
   })
