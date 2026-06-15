@@ -11,7 +11,7 @@ import FestivalHUD from './FestivalHUD'
 import PhotoOverlay from './PhotoOverlay'
 import Minimap from './Minimap'
 import PauseMenu from './PauseMenu'
-import Onboarding from './Onboarding'
+import CharacterCreator from './CharacterCreator'
 
 function usePointerLocked(): boolean {
   const [locked, setLocked] = useState(false)
@@ -159,7 +159,7 @@ export default function HUD() {
       <FoodToast />
       <Minimap />
       <PauseMenu />
-      <Onboarding />
+      <CharacterCreator />
     </div>
   )
 }
