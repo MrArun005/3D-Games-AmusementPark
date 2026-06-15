@@ -23,6 +23,7 @@ import StringLights from '@/components/world/StringLights'
 import Balloons from '@/components/world/Balloons'
 import GameStalls from '@/components/world/GameStalls'
 import VendorCarts from '@/components/world/VendorCarts'
+import Props from '@/components/world/Props'
 import AutoRickshaw from '@/components/world/AutoRickshaw'
 import FloodLights from '@/components/world/FloodLights'
 import FairCrowd from '@/components/world/FairCrowd'
@@ -68,6 +69,7 @@ export default function Scene() {
         <Balloons />
         <GameStalls />
         <VendorCarts />
+        <Props />
         <AutoRickshaw />
         <FloodLights />
         <FairCrowd />
