@@ -2,102 +2,60 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Replace the single reused human model with varied GTA-style civilian humans on one shared rig, and give the player a customizable avatar that persists across sessions — with behavior otherwise unchanged.
+**Goal:** Replace the single reused human model with varied modern-civilian ("GTA-style") humans, and give the player a customizable avatar that persists across sessions — with behavior otherwise unchanged.
 
-**Architecture:** A CC0 modular human pack is loaded once and cloned per person (same `SkeletonUtils.clone` pattern as today's `Crowd.tsx`). `lib/characters.ts` turns a small `CharacterConfig` into a configured clone; `randomConfig` produces deterministic crowd variety; `useAvatarStore` persists the player's config to localStorage. A `CharacterCreator` modal (first-run + pause-menu re-edit) drives it, with a tiny live-preview canvas.
+**Architecture:** A set of 6 CC0 modern-civilian human GLBs (Quaternius Animated Men/Women, CC0) is loaded via drei `useGLTF` and cloned per person with `SkeletonUtils.clone` (same pattern as today's `Crowd.tsx`). `lib/characters.ts` turns a small `CharacterConfig` (which model + accent tint + scale) into a configured clone; `randomConfig` produces deterministic crowd variety; `useAvatarStore` persists the player's config to localStorage. A `CharacterCreator` modal (first-run + pause-menu re-edit) drives it, with a tiny live-preview canvas.
 
 **Tech Stack:** Next.js 15 + React Three Fiber + drei + three-stdlib `SkeletonUtils` + zustand; vitest added for unit-testing pure logic.
 
 **Spec:** [`docs/superpowers/specs/2026-06-15-living-characters-design.md`](../specs/2026-06-15-living-characters-design.md) §5.
+
+## Asset facts (from Task 1, completed)
+
+6 GLBs in `public/models/characters/`, each a **SINGLE** skinned mesh (one armature, `SKINS=1`), CC0:
+
+| File | Mesh | Sex |
+|---|---|---|
+| `civilian_casual.glb` | `BaseHuman` | m |
+| `civilian_man.glb` | `BaseHuman` | m |
+| `civilian_longsleeve.glb` | `BaseHuman` | m |
+| `civilian_suit.glb` | `BaseHuman` | m |
+| `civilian_woman.glb` | `Female` | f |
+| `civilian_woman2.glb` | `BaseHuman.000` | f |
+
+Animation clips are prefixed `HumanArmature|` and named `<Sex>_<Action>` — men use `Man_Idle`/`Man_Walk`/`Man_Run`/`Man_Sitting`/…, women use `Female_Idle`/`Female_Walk`/… So clips are matched **by suffix** (`/Idle$/`, `/Walk$/`), never by exact name. Variety comes from: model choice (6), a light accent tint, and scale. (No modular part-meshes; the body is one mesh, so per-part skin/hair/outfit channels are NOT available.)
 
 ---
 
 ## File Structure
 
 **Create:**
-- `public/models/characters/` — the CC0 GLB asset(s) (Task 1)
-- `scripts/inspect-glb.mjs` — node script that prints a GLB's meshes + animation clips (Task 1, verification)
-- `lib/characters.ts` — `CharacterConfig`, palettes, `CHARACTER_ASSET` descriptor, `buildCharacter`, `randomConfig`
-- `lib/characters.test.ts` — unit tests for `randomConfig` determinism + config bounds
+- `lib/characters.ts` — `CharacterConfig`, `CHARACTER_MODELS`, `CHARACTER_URLS`, `ACCENT_COLORS`, `findClip`, `buildCharacter`, `randomConfig`, `defaultConfig`
+- `lib/characters.test.ts` — unit tests for `randomConfig` determinism + config bounds + `findClip`
 - `state/useAvatarStore.ts` — zustand store + localStorage persistence of the player's config
 - `state/useAvatarStore.test.ts` — unit tests for load/save round-trip + default
 - `components/CharacterPreview.tsx` — small standalone R3F canvas rendering one `CharacterConfig`
-- `components/ui/CharacterCreator.tsx` — first-run + re-edit modal (character pickers + live preview + controls playbill)
-- `scripts/check-characters.js` — Playwright screenshot check (crowd variety + creator + third-person avatar)
+- `components/ui/CharacterCreator.tsx` — first-run + re-edit modal (model picker + accent + scale + name + live preview)
+- `scripts/check-characters.js` — Playwright screenshot check
 - `vitest.config.ts` — minimal vitest config
 
 **Modify:**
 - `package.json` — add `vitest` devDependency + `test` script
-- `components/Player/PlayerAvatar.tsx` — build from `useAvatarStore` config on the new rig
-- `components/world/Crowd.tsx` — build each NPC from `randomConfig` on the new rig
+- `components/Player/PlayerAvatar.tsx` — build from `useAvatarStore` config on the chosen civilian model
+- `components/world/Crowd.tsx` — build each NPC from `randomConfig` across the 6 civilian models
 - `components/ui/HUD.tsx` — mount `<CharacterCreator />` in place of `<Onboarding />`
 - `components/ui/PauseMenu.tsx` — add an "Edit character" button that opens the creator
 
 **Delete:**
-- `components/ui/Onboarding.tsx` — superseded by `CharacterCreator` (its controls playbill is absorbed)
+- `components/ui/Onboarding.tsx` — superseded by `CharacterCreator` (its controls hint is absorbed)
+
+**Already done (Task 1):** `scripts/inspect-glb.mjs`, `public/models/characters/*.glb`, `@gltf-transform/core` devDep.
 
 ---
 
-## Task 1: Asset spike — acquire & verify a CC0 human pack
+## Task 1: Asset spike — DONE
 
-**Files:**
-- Create: `scripts/inspect-glb.mjs`
-- Create: `public/models/characters/` (the downloaded `.glb`(s))
-
-**This is a verify-or-escalate gate.** Phase 1 needs only a rig with an `idle`-ish and a `walk`-ish clip plus a way to produce visual variety (separate swappable body/outfit meshes, OR a single skinned mesh whose material we tint). It does NOT need a `sit` clip (that is Phase 3).
-
-- [ ] **Step 1: Write the GLB inspector**
-
-Create `scripts/inspect-glb.mjs`:
-
-```js
-// Prints mesh names + animation clip names for a GLB so we can wire characters.ts.
-// Usage: node scripts/inspect-glb.mjs public/models/characters/<file>.glb
-import { readFileSync } from 'node:fs'
-import { NodeIO } from '@gltf-transform/core'
-
-const path = process.argv[2]
-if (!path) { console.error('usage: node scripts/inspect-glb.mjs <file.glb>'); process.exit(1) }
-const io = new NodeIO()
-const doc = await io.read(path)
-const root = doc.getRoot()
-console.log('MESHES:')
-for (const m of root.listMeshes()) console.log('  -', JSON.stringify(m.getName()))
-console.log('ANIMATIONS:')
-for (const a of root.listAnimations()) console.log('  -', JSON.stringify(a.getName()))
-console.log('SKINS:', root.listSkins().length)
-```
-
-- [ ] **Step 2: Install the inspector dependency**
-
-Run: `npm install -D @gltf-transform/core --legacy-peer-deps`
-Expected: installs without error.
-
-- [ ] **Step 3: Acquire a CC0 pack**
-
-Try in order; stop at the first that yields a rigged human GLB with at least an idle + walk clip:
-1. **Quaternius "Ultimate Animated Character Pack"** (CC0, no account) — quaternius.com / its itch.io page. Prefer the glTF/GLB distribution. Modular: separate body/outfit/hair part meshes sharing one skeleton.
-2. **KayKit Character pack** (CC0) if Quaternius is unavailable.
-3. **Fallback A — Mixamo:** STOP and tell the user — Mixamo needs their Adobe login. Provide a fetch list (1 base human + `Idle`, `Walking` animations as GLB).
-4. **Fallback B — procedural:** STOP and tell the user the pack route failed; propose the procedural-humans fallback from the spec §9.
-
-Save the chosen file(s) under `public/models/characters/`.
-
-- [ ] **Step 4: Inspect and record the structure**
-
-Run: `node scripts/inspect-glb.mjs public/models/characters/<file>.glb`
-Expected: a non-empty MESHES list, an ANIMATIONS list containing an idle-like and a walk-like clip, and `SKINS: >=1`.
-
-Record the **exact** mesh names and clip names — Task 3 wires them into `CHARACTER_ASSET`. Note whether the pack is **modular** (multiple part meshes to show/hide) or **single** (one skinned mesh to tint).
-
-- [ ] **Step 5: Commit**
-
-```bash
-git add scripts/inspect-glb.mjs public/models/characters package.json package-lock.json
-git commit -m "feat(characters): add CC0 human pack + GLB inspector (asset spike)"
-```
-
-**Gate:** If no pack with idle+walk could be acquired, do NOT proceed — surface the blocker and the chosen fallback to the user.
+Civilian CC0 human pack acquired and committed (see "Asset facts" above). No further action; proceed to Task 2.
 
 ---
 
@@ -134,14 +92,18 @@ Create `lib/characters.test.ts`:
 
 ```ts
 import { describe, it, expect } from 'vitest'
-import { randomConfig, BODIES, OUTFIT_COLORS, defaultConfig, type CharacterConfig } from '@/lib/characters'
+import * as THREE from 'three'
+import {
+  randomConfig, defaultConfig, findClip,
+  CHARACTER_MODELS, ACCENT_COLORS, type CharacterConfig,
+} from '@/lib/characters'
 import { mulberry32 } from '@/lib/spawn'
 
 const inBounds = (c: CharacterConfig) => {
-  expect(c.body).toBeGreaterThanOrEqual(0)
-  expect(c.body).toBeLessThan(BODIES.length)
-  expect(c.outfitColor).toBeGreaterThanOrEqual(0)
-  expect(c.outfitColor).toBeLessThan(OUTFIT_COLORS.length)
+  expect(c.model).toBeGreaterThanOrEqual(0)
+  expect(c.model).toBeLessThan(CHARACTER_MODELS.length)
+  expect(c.accent).toBeGreaterThanOrEqual(0)
+  expect(c.accent).toBeLessThan(ACCENT_COLORS.length)
   expect(c.scale).toBeGreaterThan(0.5)
   expect(c.scale).toBeLessThan(1.6)
 }
@@ -155,6 +117,21 @@ describe('randomConfig', () => {
   })
   it('defaultConfig is in bounds', () => inBounds(defaultConfig()))
 })
+
+describe('findClip', () => {
+  const clips = [
+    new THREE.AnimationClip('HumanArmature|Man_Idle', 1, []),
+    new THREE.AnimationClip('HumanArmature|Man_Walk', 1, []),
+    new THREE.AnimationClip('HumanArmature|Female_Walk', 1, []),
+  ]
+  it('matches by suffix regardless of sex prefix', () => {
+    expect(findClip(clips, 'Idle')?.name).toBe('HumanArmature|Man_Idle')
+    expect(findClip([clips[2]], 'Walk')?.name).toBe('HumanArmature|Female_Walk')
+  })
+  it('returns undefined when no clip matches', () => {
+    expect(findClip(clips, 'Sitting')).toBeUndefined()
+  })
+})
 ```
 
 - [ ] **Step 4: Run test to verify it fails**
@@ -164,68 +141,64 @@ Expected: FAIL — `lib/characters.ts` has no exports yet.
 
 - [ ] **Step 5: Implement `lib/characters.ts` (config + variety; visual builder stubbed)**
 
-Create `lib/characters.ts`. The `CHARACTER_ASSET` descriptor is filled with the **real names recorded in Task 1** — replace the placeholder strings below with those exact names, and set `modular` accordingly:
+Create `lib/characters.ts`:
 
 ```ts
 import * as THREE from 'three'
 import { SkeletonUtils } from 'three-stdlib'
 import { BAZAAR } from '@/lib/palette'
 
-/** Descriptor for the chosen CC0 pack — names come from `scripts/inspect-glb.mjs` (Task 1). */
-export const CHARACTER_ASSET = {
-  url: '/models/characters/<FILE>.glb',
-  /** true: separate part meshes shown/hidden per config; false: one skinned mesh, tint only. */
-  modular: true as boolean,
-  clips: { idle: '<IDLE_CLIP>', walk: '<WALK_CLIP>' },
-  /** modular only — mesh-name groups to choose between (one shown per group). */
-  bodyMeshes: ['<BODY_A>', '<BODY_B>'] as string[],
-  hairMeshes: ['<HAIR_A>', '<HAIR_B>'] as string[],
-  /** mesh names whose material gets the outfit tint. */
-  outfitMeshes: ['<TORSO>', '<LEGS>'] as string[],
-}
+export interface CharacterModel { url: string; label: string; sex: 'm' | 'f' }
 
-export const OUTFIT_COLORS = [
-  BAZAAR.magenta, BAZAAR.marigold, BAZAAR.parrotGreen, BAZAAR.turquoise,
-  BAZAAR.purple, BAZAAR.chilliRed, BAZAAR.yellow, BAZAAR.skyBlue,
-  '#e8e2d2', '#cdd6e0', '#3b332b', '#7a5230',
+/** The 6 CC0 civilian models (single skinned mesh each). Order is the picker order. */
+export const CHARACTER_MODELS: CharacterModel[] = [
+  { url: '/models/characters/civilian_casual.glb', label: 'Casual', sex: 'm' },
+  { url: '/models/characters/civilian_man.glb', label: 'Everyday', sex: 'm' },
+  { url: '/models/characters/civilian_longsleeve.glb', label: 'Long-sleeve', sex: 'm' },
+  { url: '/models/characters/civilian_suit.glb', label: 'Suit', sex: 'm' },
+  { url: '/models/characters/civilian_woman.glb', label: 'Woman', sex: 'f' },
+  { url: '/models/characters/civilian_woman2.glb', label: 'Woman II', sex: 'f' },
 ]
-export const SKIN_TONES = [BAZAAR.skin1, BAZAAR.skin2, BAZAAR.skin3, '#c98a5e', '#e0ac82']
-export const HAIR_COLORS = ['#1c1410', '#2b1c12', '#0f0c0a', '#5a3a22', '#7a7a7a']
-/** Index into the pack's body variants (modular) or 0 (single-mesh). */
-export const BODIES = CHARACTER_ASSET.modular ? CHARACTER_ASSET.bodyMeshes : ['default']
-export const HAIRS = CHARACTER_ASSET.modular ? CHARACTER_ASSET.hairMeshes : ['default']
+
+export const CHARACTER_URLS: string[] = CHARACTER_MODELS.map((m) => m.url)
+
+/**
+ * Accent tints layered LIGHTLY over the base look for subtle per-person variety.
+ * Index 0 is "none" (white = identity multiply) and is the default.
+ */
+export const ACCENT_COLORS: string[] = [
+  '#ffffff', BAZAAR.magenta, BAZAAR.marigold, BAZAAR.parrotGreen, BAZAAR.turquoise,
+  BAZAAR.purple, BAZAAR.chilliRed, BAZAAR.skyBlue, '#e8e2d2', '#cdd6e0',
+]
 
 export interface CharacterConfig {
-  body: number        // index into BODIES
-  hair: number        // index into HAIRS
-  outfitColor: number // index into OUTFIT_COLORS
-  skin: number        // index into SKIN_TONES
-  hairColor: number   // index into HAIR_COLORS
-  scale: number       // 0.85..1.25 typical
+  model: number   // index into CHARACTER_MODELS
+  accent: number  // index into ACCENT_COLORS (0 = no tint)
+  scale: number   // 0.9..1.2 typical
   name?: string
 }
 
-export const defaultConfig = (): CharacterConfig => ({
-  body: 0, hair: 0, outfitColor: 1, skin: 0, hairColor: 0, scale: 1,
-})
+export const defaultConfig = (): CharacterConfig => ({ model: 0, accent: 0, scale: 1 })
 
 /** Deterministic varied NPC config from a seeded PRNG (see mulberry32 in spawn.ts). */
 export function randomConfig(rnd: () => number): CharacterConfig {
-  const pick = (n: number) => Math.floor(rnd() * n)
   return {
-    body: pick(BODIES.length),
-    hair: pick(HAIRS.length),
-    outfitColor: pick(OUTFIT_COLORS.length),
-    skin: pick(SKIN_TONES.length),
-    hairColor: pick(HAIR_COLORS.length),
-    scale: 0.85 + rnd() * 0.35,
+    model: Math.floor(rnd() * CHARACTER_MODELS.length),
+    accent: Math.floor(rnd() * ACCENT_COLORS.length),
+    scale: 0.9 + rnd() * 0.3,
   }
 }
 
-/**
- * Build a configured, independent clone of the loaded pack scene.
- * Implemented for real in Task 3 once the pack structure is confirmed.
- */
+/** Find a clip by action suffix — handles "HumanArmature|Man_Idle"/"...Female_Walk". */
+export function findClip(
+  animations: THREE.AnimationClip[],
+  action: 'Idle' | 'Walk' | 'Run' | 'Sitting',
+): THREE.AnimationClip | undefined {
+  const re = new RegExp(action + '$', 'i')
+  return animations.find((a) => re.test(a.name))
+}
+
+/** Build a configured, independent clone. Implemented for real in Task 3. */
 export function buildCharacter(_source: THREE.Object3D, _config: CharacterConfig): THREE.Object3D {
   throw new Error('buildCharacter not implemented yet (Task 3)')
 }
@@ -234,13 +207,13 @@ export function buildCharacter(_source: THREE.Object3D, _config: CharacterConfig
 - [ ] **Step 6: Run test to verify it passes**
 
 Run: `npm test`
-Expected: PASS (3 tests).
+Expected: PASS (5 tests).
 
 - [ ] **Step 7: Commit**
 
 ```bash
 git add package.json package-lock.json vitest.config.ts lib/characters.ts lib/characters.test.ts
-git commit -m "feat(characters): config + deterministic variety (randomConfig) with tests"
+git commit -m "feat(characters): config + deterministic variety + clip lookup, with tests"
 ```
 
 ---
@@ -250,7 +223,7 @@ git commit -m "feat(characters): config + deterministic variety (randomConfig) w
 **Files:**
 - Modify: `lib/characters.ts`
 
-No unit test (it produces a three.js object graph — verified visually in Task 5/8 via the preview and screenshots). Implementation depends on `CHARACTER_ASSET.modular` from Task 1.
+No unit test (produces a three.js object graph — verified visually in Tasks 5/8). The asset is a single skinned mesh, so the only material adjustment is a light overall accent tint; variety otherwise comes from model choice + scale.
 
 - [ ] **Step 1: Replace the `buildCharacter` stub**
 
@@ -259,41 +232,23 @@ In `lib/characters.ts`, implement:
 ```ts
 export function buildCharacter(source: THREE.Object3D, config: CharacterConfig): THREE.Object3D {
   const root = SkeletonUtils.clone(source)
-  const outfit = new THREE.Color(OUTFIT_COLORS[config.outfitColor])
-  const skin = new THREE.Color(SKIN_TONES[config.skin])
-  const hairCol = new THREE.Color(HAIR_COLORS[config.hairColor])
-
+  const tint = config.accent > 0
+    ? new THREE.Color('#ffffff').lerp(new THREE.Color(ACCENT_COLORS[config.accent]), 0.28)
+    : null
   root.traverse((o) => {
     const m = o as THREE.Mesh
     if (!m.isMesh) return
     m.castShadow = true
     m.frustumCulled = false // skinned bounds lag the body; never pop out (matches Crowd/PlayerAvatar)
-
-    if (CHARACTER_ASSET.modular) {
-      // Show only the chosen body + hair variant within each group; hide the rest.
-      if (CHARACTER_ASSET.bodyMeshes.includes(m.name)) m.visible = m.name === BODIES[config.body]
-      if (CHARACTER_ASSET.hairMeshes.includes(m.name)) m.visible = m.name === HAIRS[config.hair]
-    }
-
-    // Clone the material so per-instance tints don't bleed across clones.
-    const src = m.material as THREE.MeshStandardMaterial
-    const mat = src.clone()
-    if (CHARACTER_ASSET.outfitMeshes.includes(m.name)) {
-      mat.color = CHARACTER_ASSET.modular ? outfit.clone() : new THREE.Color('#ffffff').lerp(outfit, 0.35)
-    } else if (/hair/i.test(m.name)) {
-      mat.color = hairCol.clone()
-    } else if (/head|face|skin|body/i.test(m.name)) {
-      mat.color = CHARACTER_ASSET.modular ? skin.clone() : new THREE.Color('#ffffff').lerp(skin, 0.25)
-    }
+    // Clone the material so per-instance tints never bleed across clones.
+    const mat = (m.material as THREE.MeshStandardMaterial).clone()
+    if (tint) mat.color.multiply(tint)
     m.material = mat
   })
-
   root.scale.setScalar(config.scale)
   return root
 }
 ```
-
-> After Task 1, adjust the mesh-name matching (`/hair/i`, `/head|.../i`) to the pack's real naming if it differs from these heuristics — the names were recorded in Task 1 Step 4.
 
 - [ ] **Step 2: Type-check**
 
@@ -304,7 +259,7 @@ Expected: no errors.
 
 ```bash
 git add lib/characters.ts
-git commit -m "feat(characters): implement buildCharacter (clone + variant + tint)"
+git commit -m "feat(characters): implement buildCharacter (clone + accent tint + scale)"
 ```
 
 ---
@@ -322,7 +277,6 @@ Create `state/useAvatarStore.test.ts`:
 ```ts
 import { describe, it, expect, beforeEach, vi } from 'vitest'
 
-// jsdom-free localStorage shim
 const store = new Map<string, string>()
 beforeEach(() => {
   store.clear()
@@ -336,7 +290,7 @@ beforeEach(() => {
 describe('avatar persistence', () => {
   it('round-trips a config through save/load', async () => {
     const { saveAvatar, loadAvatar } = await import('@/state/useAvatarStore')
-    const cfg = { body: 1, hair: 0, outfitColor: 3, skin: 2, hairColor: 1, scale: 1.1, name: 'Arun' }
+    const cfg = { model: 3, accent: 2, scale: 1.1, name: 'Arun' }
     saveAvatar(cfg)
     expect(loadAvatar()).toEqual(cfg)
   })
@@ -425,17 +379,22 @@ import { Suspense, useMemo, useRef, useEffect } from 'react'
 import * as THREE from 'three'
 import { Canvas, useFrame } from '@react-three/fiber'
 import { useGLTF, useAnimations } from '@react-three/drei'
-import { buildCharacter, CHARACTER_ASSET, type CharacterConfig } from '@/lib/characters'
+import {
+  buildCharacter, findClip, CHARACTER_MODELS, CHARACTER_URLS, type CharacterConfig,
+} from '@/lib/characters'
 
 function Model({ config }: { config: CharacterConfig }) {
-  const { scene, animations } = useGLTF(CHARACTER_ASSET.url)
+  const url = CHARACTER_MODELS[config.model].url
+  const { scene, animations } = useGLTF(url)
   const built = useMemo(() => buildCharacter(scene, config), [scene, config])
   const group = useRef<THREE.Group>(null)
-  const { actions } = useAnimations(animations, group)
+  const { actions, mixer } = useAnimations(animations, group)
   useEffect(() => {
-    const a = actions[CHARACTER_ASSET.clips.idle] ?? Object.values(actions)[0]
+    const idle = findClip(animations, 'Idle') ?? animations[0]
+    const a = idle ? actions[idle.name] : Object.values(actions)[0]
     a?.reset().play()
-  }, [actions])
+    return () => { mixer.stopAllAction() }
+  }, [actions, animations, mixer, built])
   useFrame((_, dt) => { if (group.current) group.current.rotation.y += dt * 0.6 })
   return <group ref={group}><primitive object={built} /></group>
 }
@@ -454,7 +413,7 @@ export default function CharacterPreview({ config }: { config: CharacterConfig }
   )
 }
 
-useGLTF.preload(CHARACTER_ASSET.url)
+CHARACTER_URLS.forEach((u) => useGLTF.preload(u))
 ```
 
 - [ ] **Step 2: Type-check**
@@ -480,7 +439,7 @@ git commit -m "feat(characters): live turntable preview component"
 
 - [ ] **Step 1: Implement the creator**
 
-Create `components/ui/CharacterCreator.tsx`. It opens when not yet onboarded, or when `editing` is requested from the pause menu. Visual style matches the existing `Onboarding` card (circus palette, striped bars):
+Create `components/ui/CharacterCreator.tsx` (circus-card style matching the old `Onboarding`):
 
 ```tsx
 'use client'
@@ -488,9 +447,7 @@ Create `components/ui/CharacterCreator.tsx`. It opens when not yet onboarded, or
 import { useEffect, useState } from 'react'
 import { useAvatarStore } from '@/state/useAvatarStore'
 import { requestPointerLock } from '@/lib/refs'
-import {
-  OUTFIT_COLORS, SKIN_TONES, HAIR_COLORS, BODIES, HAIRS, defaultConfig, type CharacterConfig,
-} from '@/lib/characters'
+import { CHARACTER_MODELS, ACCENT_COLORS, defaultConfig, type CharacterConfig } from '@/lib/characters'
 import CharacterPreview from '@/components/CharacterPreview'
 
 /** Cross-component flag (no per-frame state) for "open the editor from the pause menu". */
@@ -502,19 +459,20 @@ function Swatch({ colors, value, onChange }: { colors: string[]; value: number; 
       {colors.map((c, i) => (
         <button key={c + i} onClick={() => onChange(i)}
           className={`h-7 w-7 rounded-full border-2 transition ${i === value ? 'border-[#ffd23f] scale-110' : 'border-black/20'}`}
-          style={{ background: c }} />
+          style={{ background: c === '#ffffff' ? 'repeating-conic-gradient(#ddd 0% 25%, #fff 0% 50%)' : c }}
+          title={c === '#ffffff' ? 'No tint' : c} />
       ))}
     </div>
   )
 }
 
-function Stepper({ label, value, count, onChange }: { label: string; value: number; count: number; onChange: (i: number) => void }) {
+function Stepper({ label, value, count, display, onChange }: { label: string; value: number; count: number; display: string; onChange: (i: number) => void }) {
   return (
     <div className="flex items-center justify-between">
       <span className="text-sm font-semibold">{label}</span>
       <div className="flex items-center gap-2">
         <button onClick={() => onChange((value - 1 + count) % count)} className="h-7 w-7 rounded-full border-2 border-[#8e0c20]/40 font-bold">‹</button>
-        <span className="w-8 text-center tabular-nums">{value + 1}/{count}</span>
+        <span className="w-24 text-center text-sm">{display}</span>
         <button onClick={() => onChange((value + 1) % count)} className="h-7 w-7 rounded-full border-2 border-[#8e0c20]/40 font-bold">›</button>
       </div>
     </div>
@@ -550,11 +508,14 @@ export default function CharacterCreator() {
           <h1 className="text-center text-2xl font-extrabold uppercase tracking-[0.12em]">{hasOnboarded ? 'Edit Your Look' : 'Create Your Character'}</h1>
           <div className="mx-auto mt-2 h-0.5 w-32 bg-[#f2a900]" />
           <div className="mt-4 space-y-3">
-            <Stepper label="Body" value={draft.body} count={BODIES.length} onChange={(i) => set({ body: i })} />
-            <Stepper label="Hair style" value={draft.hair} count={HAIRS.length} onChange={(i) => set({ hair: i })} />
-            <div><div className="mb-1 text-sm font-semibold">Outfit</div><Swatch colors={OUTFIT_COLORS} value={draft.outfitColor} onChange={(i) => set({ outfitColor: i })} /></div>
-            <div><div className="mb-1 text-sm font-semibold">Skin</div><Swatch colors={SKIN_TONES} value={draft.skin} onChange={(i) => set({ skin: i })} /></div>
-            <div><div className="mb-1 text-sm font-semibold">Hair colour</div><Swatch colors={HAIR_COLORS} value={draft.hairColor} onChange={(i) => set({ hairColor: i })} /></div>
+            <Stepper label="Character" value={draft.model} count={CHARACTER_MODELS.length}
+              display={CHARACTER_MODELS[draft.model].label} onChange={(i) => set({ model: i })} />
+            <div><div className="mb-1 text-sm font-semibold">Accent</div><Swatch colors={ACCENT_COLORS} value={draft.accent} onChange={(i) => set({ accent: i })} /></div>
+            <div className="flex items-center justify-between">
+              <span className="text-sm font-semibold">Height</span>
+              <input type="range" min={0.9} max={1.2} step={0.01} value={draft.scale}
+                onChange={(e) => set({ scale: Number(e.target.value) })} className="w-40" />
+            </div>
             <input value={draft.name ?? ''} onChange={(e) => set({ name: e.target.value.slice(0, 16) })} placeholder="Name (optional)"
               className="w-full rounded-md border-2 border-[#8e0c20]/40 bg-white/60 px-3 py-1.5 text-sm" />
           </div>
@@ -573,7 +534,7 @@ export default function CharacterCreator() {
 
 - [ ] **Step 2: Swap it into the HUD**
 
-In `components/ui/HUD.tsx`: replace the import `import Onboarding from './Onboarding'` with `import CharacterCreator from './CharacterCreator'`, and replace the `<Onboarding />` element (line ~162) with `<CharacterCreator />`.
+In `components/ui/HUD.tsx`: replace `import Onboarding from './Onboarding'` with `import CharacterCreator from './CharacterCreator'`, and replace the `<Onboarding />` element (line ~162) with `<CharacterCreator />`.
 
 - [ ] **Step 3: Delete the superseded onboarding**
 
@@ -593,14 +554,14 @@ git commit -m "feat(characters): character creator modal (first-run + re-edit), 
 
 ---
 
-## Task 7: Swap the player avatar onto the new rig
+## Task 7: Swap the player avatar onto the civilian model
 
 **Files:**
 - Modify: `components/Player/PlayerAvatar.tsx`
 
 - [ ] **Step 1: Rebuild PlayerAvatar from the avatar config**
 
-Replace the body of `components/Player/PlayerAvatar.tsx` with the version below. It keeps the existing behavior (third-person only, hidden on rides, walk clip sped up by speed, faces velocity) but builds from `useAvatarStore` config on the new pack and rebuilds when `rev` changes:
+Replace the body of `components/Player/PlayerAvatar.tsx` with the version below. Behavior is unchanged (third-person only, hidden on rides, walk clip sped up by speed, faces velocity); it now loads the player's chosen civilian model and rebuilds when the config revision changes:
 
 ```tsx
 'use client'
@@ -611,27 +572,29 @@ import { useFrame } from '@react-three/fiber'
 import { useGLTF, useAnimations } from '@react-three/drei'
 import { useGameStore } from '@/state/useGameStore'
 import { useAvatarStore } from '@/state/useAvatarStore'
-import { buildCharacter, CHARACTER_ASSET } from '@/lib/characters'
+import { buildCharacter, findClip, CHARACTER_MODELS, CHARACTER_URLS } from '@/lib/characters'
 import { look, playerRig } from '@/lib/refs'
 
 /**
- * Third-person body built from the player's saved CharacterConfig on the shared
- * CC0 rig. Rebuilds when the avatar config revision changes. Visible only in
- * third person and never while a ride owns the camera.
+ * Third-person body built from the player's saved CharacterConfig on a civilian
+ * model. Rebuilds when the avatar config revision changes. Visible only in third
+ * person and never while a ride owns the camera. Walk clip sped up by movement.
  */
 export default function PlayerAvatar() {
-  const { scene, animations } = useGLTF(CHARACTER_ASSET.url)
   const config = useAvatarStore((s) => s.config)
   const rev = useAvatarStore((s) => s.rev)
+  const { scene, animations } = useGLTF(CHARACTER_MODELS[config.model].url)
   const built = useMemo(() => buildCharacter(scene, config), [scene, config, rev])
   const group = useRef<THREE.Group>(null)
-  const { actions } = useAnimations(animations, group)
+  const { actions, mixer } = useAnimations(animations, group)
   const walk = useRef<THREE.AnimationAction | null>(null)
 
   useEffect(() => {
-    const a = actions[CHARACTER_ASSET.clips.walk] ?? Object.values(actions)[0]
+    const clip = findClip(animations, 'Walk') ?? animations[0]
+    const a = clip ? actions[clip.name] : null
     if (a) { a.play(); walk.current = a }
-  }, [actions, built])
+    return () => { mixer.stopAllAction() }
+  }, [actions, animations, mixer, built])
 
   useFrame(() => {
     const g = group.current
@@ -657,10 +620,10 @@ export default function PlayerAvatar() {
   )
 }
 
-useGLTF.preload(CHARACTER_ASSET.url)
+CHARACTER_URLS.forEach((u) => useGLTF.preload(u))
 ```
 
-> If Task 1's pack sits feet-at-origin at a different height than CesiumMan, adjust the `position={[0, -0.95, 0]}` offset so the feet meet the capsule base (verify in Step 3).
+> If the civilian model's feet don't meet the capsule base, adjust the `position={[0, -0.95, 0]}` y-offset (verify in Step 3). Quaternius humans are ~1.8 m and feet-at-origin, so −0.95 should be close.
 
 - [ ] **Step 2: Type-check**
 
@@ -669,60 +632,70 @@ Expected: no errors.
 
 - [ ] **Step 3: Visual smoke**
 
-Run `npm run dev`, enter the park, press `V` for third person. Expected: your chosen character appears, walks with movement, stands still when idle, faces travel direction. Tune the y-offset/scale if feet float or sink.
+Run `npm run dev`, enter the park, press `V`. Expected: your chosen character appears, walks with movement, stands still when idle, faces travel direction. Tune y-offset/scale if feet float or sink.
 
 - [ ] **Step 4: Commit**
 
 ```bash
 git add components/Player/PlayerAvatar.tsx
-git commit -m "feat(characters): player avatar uses the customizable CC0 character"
+git commit -m "feat(characters): player avatar uses the customizable civilian character"
 ```
 
 ---
 
-## Task 8: Swap the crowd onto the new rig with variety
+## Task 8: Swap the crowd onto the civilian models with variety
 
 **Files:**
 - Modify: `components/world/Crowd.tsx`
 
-Only the model source + per-NPC build change. The steering, LOD, lingering, balloon prop, and quality-count logic stay exactly as they are.
+Only the model source + per-NPC build change. Steering, LOD, lingering, balloon prop, and quality-count logic stay exactly as they are.
 
-- [ ] **Step 1: Repoint the model + build NPCs from randomConfig**
+- [ ] **Step 1: Load all 6 models and build NPCs from randomConfig**
 
 In `components/world/Crowd.tsx`:
-1. Replace the import block for the model/tints with:
+1. Replace the model/tints imports with:
    ```ts
-   import { buildCharacter, randomConfig, CHARACTER_ASSET } from '@/lib/characters'
+   import { buildCharacter, randomConfig, findClip, CHARACTER_MODELS, CHARACTER_URLS } from '@/lib/characters'
    ```
-   and remove the now-unused `BAZAAR` import and the local `CLOTH_TINTS` array.
-2. Replace `const MODEL = '/models/CesiumMan.glb'` with `const MODEL = CHARACTER_ASSET.url`.
-3. Inside the `npcs` `useMemo`, replace the per-clone clone+tint+scale block (the `SkeletonUtils.clone(scene)` through the material-tint `traverse`) with:
+   Remove the now-unused `BAZAAR` import and the local `CLOTH_TINTS` array, and remove the old single `MODEL` constant and its `useGLTF(MODEL)` call.
+2. Load all models at the top of the component (drei accepts an array and returns results in order):
+   ```ts
+   const gltfs = useGLTF(CHARACTER_URLS)
+   ```
+3. Inside the `npcs` `useMemo` (which must depend on `[gltfs]`), build each NPC from its own config + chosen model:
    ```ts
    const cfg = randomConfig(rnd)
+   const { scene, animations } = gltfs[cfg.model]
    const root = buildCharacter(scene, cfg)
    const s = cfg.scale
    ```
-   (Keep the balloon-prop block, the mixer/action setup, and the pushed `Npc` fields unchanged — `root` and `s` are now produced above.)
-4. Replace `const action = mixer.clipAction(animations[0])` with:
+   Keep the balloon-prop block and the pushed `Npc` fields. Build the mixer/action from that model's animations:
    ```ts
-   const clip = THREE.AnimationClip.findByName(animations, CHARACTER_ASSET.clips.walk) ?? animations[0]
+   const mixer = new THREE.AnimationMixer(root)
+   const clip = findClip(animations, 'Walk') ?? animations[0]
    const action = mixer.clipAction(clip)
+   action.play()
+   action.time = rnd() * 2 // desync strides
+   ```
+4. Replace the bottom preload line `useGLTF.preload(MODEL)` with:
+   ```ts
+   CHARACTER_URLS.forEach((u) => useGLTF.preload(u))
    ```
 
 - [ ] **Step 2: Type-check**
 
 Run: `npm run typecheck`
-Expected: no errors (no remaining `CLOTH_TINTS`/`BAZAAR` references).
+Expected: no errors (no remaining `CLOTH_TINTS`/`BAZAAR`/`MODEL` references).
 
 - [ ] **Step 3: Visual smoke**
 
-Run `npm run dev`. Expected: the wandering crowd is now visibly varied humans (different bodies/outfits/skin/hair), still walking between waypoints with the walk cycle, far ones frozen by the LOD.
+Run `npm run dev`. Expected: the wandering crowd is varied civilian humans (different models/tints/heights), still walking between waypoints, far ones frozen by the LOD.
 
 - [ ] **Step 4: Commit**
 
 ```bash
 git add components/world/Crowd.tsx
-git commit -m "feat(characters): wandering crowd is varied GTA-style humans"
+git commit -m "feat(characters): wandering crowd is varied modern-civilian humans"
 ```
 
 ---
@@ -775,17 +748,10 @@ git commit -m "feat(characters): edit your character from the pause menu"
 
 - [ ] **Step 1: Write the check script**
 
-Create `scripts/check-characters.js`, modeled on the existing `scripts/check-*.js` (reuse their Playwright boot/launch boilerplate — open the dev URL, wait for the canvas, drive keys). It must:
-1. Capture the first-run CharacterCreator (`shot-creator.png`).
-2. Click "Enter the Park", then press `V`, and capture third-person (`shot-hero.png`).
-3. Capture a wide shot of the varied crowd (`shot-crowd-humans.png`).
-
-```js
-// Mirror an existing scripts/check-*.js for the launch/connect boilerplate, then:
-//   await page.screenshot({ path: 'scripts/shot-creator.png' })
-//   // click Enter the Park (button text), press 'v', wait, screenshot shot-hero.png
-//   // walk to a crowded spot, screenshot shot-crowd-humans.png
-```
+Create `scripts/check-characters.js`, modeled on an existing `scripts/check-*.js` (reuse its Playwright boot/connect boilerplate — open the dev URL, wait for the canvas, drive keys). It must:
+1. Capture the first-run CharacterCreator → `scripts/shot-creator.png`.
+2. Click "Enter the Park", press `v`, wait, capture third-person → `scripts/shot-hero.png`.
+3. Capture a wide shot of the varied crowd → `scripts/shot-crowd-humans.png`.
 
 - [ ] **Step 2: Run the full verification suite**
 
@@ -793,7 +759,7 @@ Run each and confirm:
 - `npm test` → all unit tests PASS
 - `npm run typecheck` → no errors
 - `npm run build` → succeeds
-- `node scripts/check-characters.js` (with dev server running) → produces the three screenshots; eyeball them for varied humans + the creator + a recognizable hero.
+- `node scripts/check-characters.js` (dev server running) → produces the three screenshots; eyeball for varied civilians + the creator + a recognizable hero.
 
 - [ ] **Step 3: Commit**
 
@@ -807,10 +773,10 @@ git commit -m "test(characters): screenshot check for creator + hero + varied cr
 ## Phase 1 Done — acceptance (from spec §5.5)
 
 - [ ] First run shows the character creator; choosing + entering persists across reload.
-- [ ] The crowd is visibly varied humans, not clones of one model.
+- [ ] The crowd is visibly varied civilian humans, not clones of one model.
 - [ ] The player avatar matches the saved config in third person and photo mode.
-- [ ] Frame rate at `high` quality is no worse than before (if the pack is heavier, lower the `high` crowd count in `Crowd.tsx` `COUNT_BY_Q` or add a mid LOD).
+- [ ] Frame rate at `high` quality is no worse than before (if heavier, lower the `high` crowd count in `Crowd.tsx` `COUNT_BY_Q`).
 - [ ] `npm test`, `npm run typecheck`, and `npm run build` are all green.
 
-Phases 2 (Purpose) and 3 (Boarding) get their own plans when we reach them.
+Phases 2 (Purpose), 3 (Boarding), and 4 (whole-park realism pass) get their own plans when we reach them.
 ```
