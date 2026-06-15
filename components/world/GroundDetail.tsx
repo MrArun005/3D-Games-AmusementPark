@@ -4,12 +4,16 @@ import { useMemo } from 'react'
 import * as THREE from 'three'
 import { Instances, Instance } from '@react-three/drei'
 import { useGameStore, type Quality } from '@/state/useGameStore'
-import { mulberry32, RIDE_LIST, PARK_RADIUS } from '@/lib/spawn'
+import {
+  mulberry32, RIDE_LIST, PARK_RADIUS,
+  BOOTH_POS, GATE_POS, RESTROOM_POS, TENT_POS, BALLOON_STALL_POS,
+  STALLS, GAME_STALLS, VENDOR_CARTS, RICKSHAW_POS,
+} from '@/lib/spawn'
 
 /** Per-quality scatter counts for each detail type. */
-const TUFTS_BY_Q: Record<Quality, number> = { low: 60, medium: 140, high: 260 }
-const BUSHES_BY_Q: Record<Quality, number> = { low: 12, medium: 24, high: 40 }
-const ROCKS_BY_Q: Record<Quality, number> = { low: 8, medium: 14, high: 22 }
+const TUFTS_BY_Q: Record<Quality, number> = { low: 70, medium: 150, high: 280 }
+const BUSHES_BY_Q: Record<Quality, number> = { low: 10, medium: 18, high: 30 }
+const ROCKS_BY_Q: Record<Quality, number> = { low: 8, medium: 14, high: 20 }
 
 interface Scatter {
   x: number
@@ -20,91 +24,131 @@ interface Scatter {
   color: THREE.Color
 }
 
-/** Keep scenery off the paved areas + away from ride pads, plaza and fountain. */
-const RIDE_CLEAR_SQ = 7 * 7
-const PLAZA_CLEAR_SQ = 13 * 13
-const FOUNTAIN_CLEAR_SQ = 3 * 3
-const INNER_R = 6
+const INNER_R = 13.5 // outside the plaza disc
 const OUTER_R = PARK_RADIUS - 3
 
-/**
- * Rejection-sample `n` deterministic scatter points across the grass ring
- * (INNER_R → OUTER_R), excluding ride pads, the plaza/path core and the
- * fountain. `tint(rnd)` picks the per-instance colour.
- */
+// --- Road / structure exclusion -------------------------------------------
+// The paving is: a plaza disc (r≈12), a midway RING (r 25.5–28.5), and radial
+// STRIPS (width 3) from the plaza out to every ride entrance + the booth + gate.
+// Scenery must avoid all of that, plus a clearance around every structure.
+
+/** Radial path strip centre-lines: same targets Pathways.tsx draws strips to. */
+const STRIP_TARGETS: [number, number][] = [
+  ...RIDE_LIST.map((s): [number, number] => [
+    s.position[0] + s.trigger.offset[0],
+    s.position[2] + s.trigger.offset[2],
+  ]),
+  [BOOTH_POS[0], BOOTH_POS[2]],
+  [GATE_POS[0], GATE_POS[2]],
+]
+
+/** Structures to keep clear of: [x, z, clearanceRadius]. */
+const STRUCTURES: [number, number, number][] = [
+  [0, 0, 3.5], // fountain
+  [BOOTH_POS[0], BOOTH_POS[2], 4],
+  [GATE_POS[0], GATE_POS[2], 5],
+  [RESTROOM_POS[0], RESTROOM_POS[2], 4],
+  [TENT_POS[0], TENT_POS[2], 6.5],
+  [BALLOON_STALL_POS[0], BALLOON_STALL_POS[2], 3],
+  [RICKSHAW_POS[0], RICKSHAW_POS[2], 3],
+  ...RIDE_LIST.map((s): [number, number, number] => [s.position[0], s.position[2], 7]),
+  ...STALLS.map((s): [number, number, number] => [s.position[0], s.position[2], 4]),
+  ...GAME_STALLS.map((s): [number, number, number] => [s.position[0], s.position[2], 4]),
+  ...VENDOR_CARTS.map((c): [number, number, number] => [c.position[0], c.position[2], 3]),
+]
+
+const STRIP_HALF = 2.4 // strip is 3 wide; clear a touch more
+const RING_INNER = 23.5
+const RING_OUTER = 30
+
+/** True if (x, z) lands on a path/ring/strip or too close to a structure. */
+function blocked(x: number, z: number): boolean {
+  const r2 = x * x + z * z
+  if (r2 < INNER_R * INNER_R) return true // plaza + core
+  if (r2 > RING_INNER * RING_INNER && r2 < RING_OUTER * RING_OUTER) return true // midway ring
+  for (const [sx, sz, cr] of STRUCTURES) {
+    if ((x - sx) ** 2 + (z - sz) ** 2 < cr * cr) return true
+  }
+  // radial strips: near the centre-line from origin out to each target
+  for (const [tx, tz] of STRIP_TARGETS) {
+    const len = Math.hypot(tx, tz) || 1
+    const dx = tx / len
+    const dz = tz / len
+    const proj = x * dx + z * dz // distance along the strip direction
+    if (proj < 8 || proj > len + 2) continue
+    const perp = Math.abs(x * -dz + z * dx)
+    if (perp < STRIP_HALF) return true
+  }
+  return false
+}
+
+/** Rejection-sample `n` deterministic scatter points on the open grass. */
 function scatter(rnd: () => number, n: number, tint: (r: () => number) => THREE.Color, sMin: number, sMax: number): Scatter[] {
   const out: Scatter[] = []
   let tries = 0
-  while (out.length < n && tries < n * 40) {
+  while (out.length < n && tries < n * 80) {
     tries++
     const a = rnd() * Math.PI * 2
     const r = INNER_R + rnd() * (OUTER_R - INNER_R)
     const x = Math.cos(a) * r
     const z = Math.sin(a) * r
-    if (x * x + z * z < PLAZA_CLEAR_SQ) continue // plaza + paths core
-    if (x * x + z * z < FOUNTAIN_CLEAR_SQ) continue // fountain (redundant inside plaza, kept explicit)
-    if (RIDE_LIST.some((s) => (x - s.position[0]) ** 2 + (z - s.position[2]) ** 2 < RIDE_CLEAR_SQ)) continue
+    if (blocked(x, z)) continue
     out.push({ x, z, s: sMin + rnd() * (sMax - sMin), rot: rnd() * Math.PI * 2, color: tint(rnd) })
   }
   return out
 }
 
 /**
- * Decorative instanced ground scatter — grass tufts, low bushes and a handful
- * of rocks — to break up the flat PBR lawn. One InstancedMesh per detail type,
- * deterministically placed (so it never reshuffles) and quality-scaled. Static:
- * no per-frame work. No collider; it's purely visual.
+ * Decorative instanced ground scatter — small grass tufts, low bushes and a
+ * handful of rocks — to break up the flat PBR lawn. One InstancedMesh per type,
+ * deterministically placed on the OPEN GRASS only (never on the plaza, midway
+ * ring, radial paths or on top of structures) and quality-scaled. Static.
  */
 export default function GroundDetail() {
   const quality = useGameStore((s) => s.quality)
 
   const { tufts, bushes, rocks } = useMemo(() => {
     const rnd = mulberry32(20260615)
-    // grass tufts — varied yellow-green
-    const tufts = scatter(rnd, TUFTS_BY_Q[quality], (r) => new THREE.Color().setHSL(0.27 + r() * 0.06, 0.5, 0.32 + r() * 0.12), 0.7, 1.4)
-    // bushes — deeper, more saturated green
-    const bushes = scatter(rnd, BUSHES_BY_Q[quality], (r) => new THREE.Color().setHSL(0.3 + r() * 0.05, 0.45, 0.24 + r() * 0.1), 0.8, 1.5)
-    // rocks — desaturated grey, slight warm/cool drift
-    const rocks = scatter(rnd, ROCKS_BY_Q[quality], (r) => new THREE.Color().setHSL(0.08 + r() * 0.06, 0.05, 0.4 + r() * 0.18), 0.6, 1.3)
+    const tufts = scatter(rnd, TUFTS_BY_Q[quality], (r) => new THREE.Color().setHSL(0.28 + r() * 0.05, 0.45, 0.30 + r() * 0.1), 0.6, 1.0)
+    const bushes = scatter(rnd, BUSHES_BY_Q[quality], (r) => new THREE.Color().setHSL(0.31 + r() * 0.04, 0.42, 0.22 + r() * 0.08), 0.45, 0.8)
+    const rocks = scatter(rnd, ROCKS_BY_Q[quality], (r) => new THREE.Color().setHSL(0.08 + r() * 0.05, 0.04, 0.42 + r() * 0.16), 0.5, 1.1)
     return { tufts, bushes, rocks }
   }, [quality])
 
-  // Procedural geometry built once — a 4-blade tuft, a 3-lobe bush, a low rock.
+  // A grass tuft: 6 thin short blades fanned from a common base.
   const tuftGeo = useMemo(() => {
-    const blade = new THREE.ConeGeometry(0.05, 0.5, 4)
+    const blade = new THREE.ConeGeometry(0.022, 0.32, 3)
     const parts: THREE.BufferGeometry[] = []
-    const offs: [number, number, number, number][] = [
-      [0, 0, 0, 0],
-      [0.08, 0.05, 0.5, -0.18],
-      [-0.07, -0.04, -0.5, 0.16],
-      [0.04, -0.08, 1.2, 0.12],
-    ]
-    for (const [ox, oz, tilt, lean] of offs) {
+    const rnd = mulberry32(7)
+    for (let i = 0; i < 6; i++) {
       const g = blade.clone()
-      g.rotateX(lean)
-      g.rotateZ(tilt * 0.12)
-      g.translate(ox, 0.25, oz)
+      g.rotateZ((rnd() - 0.5) * 0.5)
+      g.rotateX((rnd() - 0.5) * 0.5)
+      g.translate((rnd() - 0.5) * 0.18, 0.16, (rnd() - 0.5) * 0.18)
       parts.push(g)
     }
     blade.dispose()
     return mergeSimple(parts)
   }, [])
 
+  // A bush: 5 small lobes packed into a rounded dome.
   const bushGeo = useMemo(() => {
-    const lobe = new THREE.SphereGeometry(0.5, 8, 6)
+    const lobe = new THREE.SphereGeometry(0.4, 8, 6)
     const parts: THREE.BufferGeometry[] = [
-      lobe.clone().translate(0, 0.42, 0),
-      lobe.clone().scale(0.8, 0.8, 0.8).translate(0.38, 0.3, 0.1),
-      lobe.clone().scale(0.75, 0.75, 0.75).translate(-0.32, 0.28, -0.18),
+      lobe.clone().translate(0, 0.34, 0),
+      lobe.clone().scale(0.8, 0.8, 0.8).translate(0.3, 0.26, 0.08),
+      lobe.clone().scale(0.78, 0.78, 0.78).translate(-0.26, 0.24, -0.14),
+      lobe.clone().scale(0.7, 0.7, 0.7).translate(0.05, 0.22, -0.3),
+      lobe.clone().scale(0.72, 0.72, 0.72).translate(-0.05, 0.5, 0.05),
     ]
     lobe.dispose()
     return mergeSimple(parts)
   }, [])
 
   const rockGeo = useMemo(() => {
-    const g = new THREE.DodecahedronGeometry(0.5, 0)
-    g.scale(1, 0.65, 0.9) // squash so it sits like a boulder
-    g.translate(0, 0.25, 0)
+    const g = new THREE.DodecahedronGeometry(0.4, 0)
+    g.scale(1, 0.6, 0.9)
+    g.translate(0, 0.18, 0)
     g.computeVertexNormals()
     return g
   }, [])
@@ -118,7 +162,7 @@ export default function GroundDetail() {
           <Instance key={i} position={[t.x, 0, t.z]} rotation={[0, t.rot, 0]} scale={t.s} color={t.color} />
         ))}
       </Instances>
-      {/* bushes — green clusters, cast shadow */}
+      {/* bushes — small green clusters, cast shadow */}
       <Instances limit={Math.max(bushes.length, 1)} castShadow geometry={bushGeo}>
         <meshStandardMaterial color="#ffffff" roughness={0.9} />
         {bushes.map((b, i) => (
