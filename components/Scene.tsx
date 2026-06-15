@@ -1,6 +1,7 @@
 'use client'
 
 import { Physics } from '@react-three/rapier'
+import { Environment } from '@react-three/drei'
 import GameSystems from '@/components/GameSystems'
 import PhotoCamera from '@/components/PhotoCamera'
 import FestivalController from '@/components/festival/FestivalController'
@@ -46,6 +47,7 @@ export default function Scene() {
     <>
       <SkyDome />
       <Lighting />
+      <Environment files="/hdri/kloofendal_48d_partly_cloudy_puresky_1k.hdr" background={false} />
       <GameSystems />
       <PhotoCamera />
       <FestivalController />

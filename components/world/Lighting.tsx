@@ -18,10 +18,11 @@ export default function Lighting() {
   const sun = useRef<THREE.DirectionalLight>(null)
   const hemi = useRef<THREE.HemisphereLight>(null)
   const scene = useThree((s) => s.scene)
+  const gl = useThree((s) => s.gl)
   const quality = useGameStore((s) => s.quality)
 
   useEffect(() => {
-    scene.fog = new THREE.Fog('#cfe3ff', 40, 170)
+    scene.fog = new THREE.Fog('#cfe3ff', 45, 210)
     return () => {
       scene.fog = null
     }
@@ -37,14 +38,16 @@ export default function Lighting() {
       sun.current.intensity = Math.max(0, elev) * 2 + 0.04
       sun.current.color.lerpColors(WARM, WHITE, Math.min(1, Math.max(0, elev * 1.6)))
     }
-    if (hemi.current) hemi.current.intensity = 0.15 + Math.max(0, elev) * 0.5
+    if (hemi.current) hemi.current.intensity = 0.08 + Math.max(0, elev) * 0.35
     if (scene.fog instanceof THREE.Fog) scene.fog.color.lerpColors(NIGHT_FOG, DAY_FOG, dayness)
+    scene.environmentIntensity = 0.12 + dayness * 0.88 // IBL fades out at night
+    gl.toneMappingExposure = 0.85 + dayness * 0.35 // brighter, photographic by day
   })
 
   return (
     <>
       <hemisphereLight ref={hemi} args={['#bcd6ff', '#3c5a3c', 0.5]} />
-      <ambientLight intensity={0.12} />
+      <ambientLight intensity={0.05} />
       <directionalLight
         ref={sun}
         castShadow={quality !== 'low'}
