@@ -4,40 +4,31 @@ import { useEffect, useMemo, useRef } from 'react'
 import * as THREE from 'three'
 import { useFrame } from '@react-three/fiber'
 import { useGLTF, useAnimations } from '@react-three/drei'
-import { SkeletonUtils } from 'three-stdlib'
 import { useGameStore } from '@/state/useGameStore'
+import { useAvatarStore } from '@/state/useAvatarStore'
+import { buildCharacter, findClip, CHARACTER_MODELS, CHARACTER_URLS } from '@/lib/characters'
 import { look, playerRig } from '@/lib/refs'
 
-const MODEL = '/models/CesiumMan.glb'
-
 /**
- * Third-person body: a real textured human (Khronos CesiumMan, a scanned
- * person with a built-in walk cycle). Rendered as a child of the player's
- * RigidBody so it follows physics exactly; visible only in third person and
- * never while a ride owns the camera. The single walk clip is sped up with
- * movement and paused when standing still.
+ * Third-person body built from the player's saved CharacterConfig on a civilian
+ * model. Rebuilds when the avatar config revision changes. Visible only in third
+ * person and never while a ride owns the camera. Walk clip sped up by movement.
  */
 export default function PlayerAvatar() {
-  const { scene, animations } = useGLTF(MODEL)
-  // Clone so the avatar instance is independent of the cached source graph.
-  const cloned = useMemo(() => SkeletonUtils.clone(scene), [scene])
+  const config = useAvatarStore((s) => s.config)
+  const rev = useAvatarStore((s) => s.rev)
+  const { scene, animations } = useGLTF(CHARACTER_MODELS[config.model].url)
+  const built = useMemo(() => buildCharacter(scene, config), [scene, config, rev])
   const group = useRef<THREE.Group>(null)
-  const { actions, names } = useAnimations(animations, group)
+  const { actions, mixer } = useAnimations(animations, group)
   const walk = useRef<THREE.AnimationAction | null>(null)
 
   useEffect(() => {
-    cloned.traverse((o) => {
-      if ((o as THREE.Mesh).isMesh) {
-        o.castShadow = true
-        o.frustumCulled = false // skinned bounds lag the capsule; never pop out
-      }
-    })
-    const a = actions[names[0]]
-    if (a) {
-      a.play()
-      walk.current = a
-    }
-  }, [cloned, actions, names])
+    const clip = findClip(animations, 'Walk') ?? animations[0]
+    const a = clip ? actions[clip.name] : null
+    if (a) { a.play(); walk.current = a }
+    return () => { mixer.stopAllAction() }
+  }, [actions, animations, mixer, built])
 
   useFrame(() => {
     const g = group.current
@@ -49,24 +40,18 @@ export default function PlayerAvatar() {
     const speed = v ? Math.hypot(v.x, v.z) : 0
     const a = walk.current
     if (a) {
-      if (speed > 0.4) {
-        a.paused = false
-        a.timeScale = THREE.MathUtils.clamp(speed / 2.2, 0.7, 2.4)
-      } else {
-        a.paused = true // stand still instead of sliding
-      }
+      if (speed > 0.4) { a.paused = false; a.timeScale = THREE.MathUtils.clamp(speed / 2.2, 0.7, 2.4) }
+      else a.paused = true
     }
-    // Face velocity while moving, else the camera yaw. Model front is +Z.
     if (v && speed > 0.4) g.rotation.y = Math.atan2(v.x, v.z)
     else g.rotation.y = look.yaw + Math.PI
   })
 
-  // CesiumMan is modelled ~1.8 m tall in metres; feet sit at the capsule base.
   return (
     <group ref={group} position={[0, -0.95, 0]}>
-      <primitive object={cloned} />
+      <primitive object={built} />
     </group>
   )
 }
 
-useGLTF.preload(MODEL)
+CHARACTER_URLS.forEach((u) => useGLTF.preload(u))
