@@ -6,10 +6,11 @@ import { useFrame } from '@react-three/fiber'
 import { useRapier, type RapierRigidBody } from '@react-three/rapier'
 import { useGLTF } from '@react-three/drei'
 import { useGameStore, type Quality } from '@/state/useGameStore'
-import { mulberry32, WAYPOINTS } from '@/lib/spawn'
+import { mulberry32, WAYPOINTS, RIDES } from '@/lib/spawn'
 import { crowdAgents } from '@/lib/crowd'
 import { pickGoal, STATION_BY_ID, type Goal } from '@/lib/npc'
 import { StationQueue } from '@/lib/queue'
+import { useRideOccupancy, RIDE_SEATS } from '@/lib/rideOccupancy'
 import { buildCharacter, randomConfig, findClip, CHARACTER_MODELS, CHARACTER_URLS, ACCENT_COLORS } from '@/lib/characters'
 
 /** Bright balloon colours (skip index 0 = white) for the "bought something" prop. */
@@ -40,6 +41,8 @@ interface Npc {
   goal: Goal
   phase: 'seeking' | 'queuing' | 'busy'
   timer: number
+  /** Claimed ride-seat index while riding a seated ride, else null. */
+  seat: number | null
 }
 
 /**
@@ -110,6 +113,7 @@ export default function Crowd() {
         goal,
         phase: 'seeking',
         timer: 0,
+        seat: null,
       })
     }
     return list
@@ -185,6 +189,13 @@ export default function Crowd() {
       } else if (n.phase === 'busy') {
         n.timer -= dt
         if (n.timer <= 0) {
+          if (n.seat !== null) {
+            useRideOccupancy.getState().releaseSeat(n.goal.id, n.seat)
+            n.seat = null
+            const exit = RIDES[n.goal.id as keyof typeof RIDES]?.exit
+            if (exit) { n.x = exit[0]; n.z = exit[2] }
+            n.root.visible = i < count // restore visibility (respect the LOD cap)
+          }
           n.goal = pickGoal(rndRef.current)
           n.tx = n.goal.x
           n.tz = n.goal.z
@@ -206,9 +217,22 @@ export default function Crowd() {
             const slot = q.slotFor(i)
             if (slot) { n.tx = slot.x; n.tz = slot.z }
             if (q.frontReady(i)) {
-              q.leaveFront()
-              n.phase = 'busy'
-              n.timer = n.goal.kind === 'ride' ? 6 : 4
+              if (n.goal.kind === 'ride' && RIDE_SEATS[n.goal.id] !== undefined) {
+                const seat = useRideOccupancy.getState().claimSeat(n.goal.id, 'npc', Math.floor(rndRef.current() * 8))
+                if (seat !== null) {
+                  q.leaveFront()
+                  n.seat = seat
+                  n.phase = 'busy'
+                  n.timer = RIDES[n.goal.id as keyof typeof RIDES].duration
+                  n.root.visible = false // board: hide the walker; the ride shows the seated rider
+                }
+                // seat === null: ride momentarily full — stay at front, retry next frame
+              } else {
+                // non-seated ride or game stall: Phase-2 placeholder
+                q.leaveFront()
+                n.phase = 'busy'
+                n.timer = n.goal.kind === 'ride' ? 6 : 4
+              }
             }
           }
         } else {
@@ -245,9 +269,12 @@ export default function Crowd() {
       n.root.position.set(n.x, 0, n.z)
       n.root.rotation.y = n.yaw
 
-      // move the kinematic capsule to follow the NPC
+      // move the kinematic capsule to follow the NPC (parked far below while riding)
       const body = bodies.current[i]
-      if (body) body.setNextKinematicTranslation({ x: n.x, y: 0.9, z: n.z })
+      if (body) {
+        if (n.seat !== null) body.setNextKinematicTranslation({ x: 0, y: -50, z: 0 })
+        else body.setNextKinematicTranslation({ x: n.x, y: 0.9, z: n.z })
+      }
 
       // publish transform for the speech-bubble system
       const a = (crowdAgents[i] ??= { x: 0, z: 0, y: 0, idle: false })
@@ -277,6 +304,8 @@ export default function Crowd() {
       // don't let a now-hidden NPC keep holding a queue slot
       const hn = npcs[i]
       if (hn && hn.phase === 'queuing') { queues.get(hn.goal.id)?.remove(i); hn.phase = 'seeking' }
+      // ...nor keep a claimed ride-seat reserved while dropped by the LOD cap
+      if (hn && hn.seat !== null) { useRideOccupancy.getState().releaseSeat(hn.goal.id, hn.seat); hn.seat = null }
     }
     crowdAgents.length = count
   })
